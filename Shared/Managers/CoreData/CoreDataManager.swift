@@ -174,6 +174,7 @@ extension CoreDataManager {
             context.performAndWait {
                 let historyFetchRequest = NSPersistentHistoryTransaction.fetchRequest!
                 let request = NSPersistentHistoryChangeRequest.fetchHistory(after: self.lastHistoryToken)
+                request.affectedStores = self.container.persistentStoreCoordinator.persistentStores.filter({ $0.configurationName == "Cloud" })
                 request.fetchRequest = historyFetchRequest
 
                 let result = (try? context.execute(request)) as? NSPersistentHistoryResult
