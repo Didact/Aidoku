@@ -35,7 +35,7 @@ struct DownloadManagerView: View {
                             Label(NSLocalizedString("REMOVE_ALL_DOWNLOADS"), systemImage: "trash")
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        MoreIcon()
                     }
                 }
             }
@@ -43,7 +43,6 @@ struct DownloadManagerView: View {
         .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
         .animation(.easeInOut(duration: 0.3), value: viewModel.downloadedManga.isEmpty)
         .navigationTitle(NSLocalizedString("DOWNLOAD_MANAGER"))
-        .navigationBarTitleDisplayMode(.large)
         .task {
             await viewModel.loadDownloadedManga()
         }
@@ -58,20 +57,11 @@ struct DownloadManagerView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "arrow.down.circle")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-
-            Text(NSLocalizedString("NO_DOWNLOADS"))
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Text(NSLocalizedString("NO_DOWNLOADS_TEXT"))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        UnavailableView(
+            NSLocalizedString("NO_DOWNLOADS"),
+            systemImage: "arrow.down.circle",
+            description: Text(NSLocalizedString("NO_DOWNLOADS_TEXT"))
+        )
     }
 
     private var downloadsList: some View {

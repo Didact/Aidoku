@@ -134,10 +134,6 @@
 "RESTORE" = "استعادة";
 "ADVANCED" = "متقدم";
 "RESET_TEXT" = "هذا الإجراء لا رجعة فيه. سيتم مسح وإعادة تعيين جميع البيانات والإعدادات وذاكرة التخزين المؤقت.";
-"CLEAR_CHAPTER_CACHE" = "مسح ذاكرة التخزين المؤقت للفصل";
-"CLEAR_CHAPTER_CACHE_TEXT" = "هذا الإجراء لا رجعة فيه. سيتم مسح الفصول المخزنة مؤقتًا وإعادة تنزيلها.";
-"CLEAR_MANGA_CACHE" = "مسح ذاكرة التخزين المؤقت للمانغا";
-"CLEAR_MANGA_CACHE_TEXT" = "هذا الإجراء لا رجعة فيه. ستتم إزالة المانجا المخزنة بشكل مؤقت الغير الموجودة في مكتبتك.";
 "CLEAR_NETWORK_CACHE" = "مسح ذاكرة التخزين المؤقت للشبكة";
 "CLEAR_NETWORK_CACHE_TEXT" = "هذا الإجراء لا رجعة فيه. سيتم مسح طلبات الشبكة المخزنة مؤقتًا والصور.";
 "CLEAR_READ_HISTORY" = "مسح سجل القراءة";
@@ -204,10 +200,6 @@
 "HISTORY_LOCKED" = "التاريخ مقفل.";
 "AUTH_TO_ENABLE" = "قم بالمصادقة للتمكين.";
 "AUTH_TO_DISABLE" = "قم بالمصادقة للتعطيل.";
-"MANGA_PAGE" = "صفحة المانغا";
-"SHOW_SOURCE_LABEL" = "إظهار تسمية المصدر";
-"USE_MANGA_TINT" = "استخدم تلوين المانغا";
-"USE_MANGA_TINT_INFO" = "تلوين صفحات المانجا استناداً إلى لون صورة الغلاف";
 "LIBRARY_UPDATING" = "تحديث المكتبة";
 "UPDATE_INTERVAL" = "الفاصل الزمني للتحديث";
 "SKIP_TITLES" = "تخطي العناوين";
@@ -349,15 +341,11 @@
 "WARNING" = "تحذير";
 "DOWNLOAD_ANYWAY_MESSAGE" = "أنت غير متصل بشبكة Wi-Fi حاليًا. هل تريد التنزيل على أي حال؟";
 "DELETE_DOWNLOAD_AFTER_READING" = "حذف التنزيل بعد القراءة";
-"ANILIST_LOGIN_NEEDED" = "مطلوب تسجيل الدخول الى \"AniList\"";
 "ONLY_DOWNLOAD_ON_WIFI" = "التنزيل فقط عبر شبكة الWiFi";
 "READER_BG_COLOR" = "لون الخلفية";
 "READER_BG_COLOR_SYSTEM" = "النظام";
 "READER_BG_COLOR_WHITE" = "ابيض";
 "READER_BG_COLOR_BLACK" = "اسود";
-"MAL_LOGIN_NEEDED" = "مطلوب تسجيل الدخول الى \"MyAnimeList\"";
-"ANILIST_LOGIN_NEEDED_TEXT" = "لقد انتهت صلاحية رمز \"AniList\" الخاص بك، لذا سيتوقف متتبع \"AniList\" عن العمل حتى تقوم بإعادة تسجيل الدخول في الإعدادات.";
-"MAL_LOGIN_NEEDED_TEXT" = "لقد انتهت صلاحية رمز \"MyAnimeList\" الخاص بك، لذا سيتوقف متتبع \"MyAnimeList\" عن العمل حتى تقوم بإعادة تسجيل الدخول في الإعدادات.";
 "SCANLATOR" = "الماسح و المترجم";
 "BACKUP_ERROR_TEXT" = "حدث خطأ أثناء الاستعادة: %@. قد تكون النسخة الاحتياطية غير صالحة.";
 "BACKUP_ERROR" = "خطأ في استعادة النسخة الاحتياطية";

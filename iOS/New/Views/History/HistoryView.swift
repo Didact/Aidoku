@@ -25,7 +25,7 @@ struct HistoryView: View {
 
     @State private var locked = UserDefaults.standard.bool(forKey: "History.lockHistoryTab")
 
-    @State private var selectedItems = Set<String>() // fix for list highlighting being buggy
+    @State private var listSelection: String? // fix for list highlighting being buggy
 
     @EnvironmentObject private var path: NavigationCoordinator
 
@@ -34,11 +34,12 @@ struct HistoryView: View {
             if locked {
                 lockedView
             } else {
-                List(selection: $selectedItems) {
-                    ForEach(viewModel.filteredHistory, id: \.daysAgo) { section in
+                List(selection: $listSelection) {
+                    let sections = viewModel.filteredHistory.values.sorted { $0.daysAgo < $1.daysAgo }
+                    ForEach(sections, id: \.daysAgo) { section in
                         if !section.entries.isEmpty {
                             Section {
-                                ForEach(section.entries, id: \.key) { entry in
+                                ForEach(section.entries, id: \.chapterCacheKey) { entry in
                                     cellView(entry: entry)
                                 }
                             } header: {
@@ -167,15 +168,7 @@ struct HistoryView: View {
             chapter: viewModel.chapterCache[entry.chapterCacheKey]
         ) {
             if let manga {
-                if let source = SourceManager.shared.source(for: manga.sourceKey) {
-                    path.push(NewMangaViewController(
-                        source: source,
-                        manga: manga,
-                        parent: path.rootViewController
-                    ))
-                } else {
-                    path.push(MangaViewController(manga: manga.toOld()))
-                }
+                path.push(MangaViewController(manga: manga, parent: path.rootViewController))
             }
         }
         .equatable()
@@ -195,8 +188,8 @@ struct HistoryView: View {
             }
             .tint(.red)
         }
-        .id(entry.key)
-        .tag(entry.key)
+        .id(entry.chapterCacheKey)
+        .tag(entry.chapterCacheKey)
 
         if #available(iOS 16.0, *) {
             return view

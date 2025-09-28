@@ -36,10 +36,6 @@
 "DISPLAY_LOGS" = "Shfaq Regjistrat";
 "ADVANCED" = "Avancuar";
 "RESET_TEXT" = "Kjo veprim është e pakthyeshme. Të gjitha të dhënat, cilësimet dhe cache-t do të fshihen dhe rivendosen.";
-"CLEAR_CHAPTER_CACHE" = "Pastro Cache-n e Kapitujve";
-"CLEAR_MANGA_CACHE" = "Pastro Cache-n e Mangave";
-"CLEAR_CHAPTER_CACHE_TEXT" = "Kjo veprim është e pakthyeshme. Kapitujt e cache-t do të fshihen dhe do të shkarkohen përsëri.";
-"CLEAR_MANGA_CACHE_TEXT" = "Kjo veprim është e pakthyeshme. Mangat e cache-t që nuk janë në bibliotekën tuaj do të hiqen.";
 "CLEAR_NETWORK_CACHE" = "Pastro Cache-n e Rrjetit";
 "CLEAR_NETWORK_CACHE_TEXT" = "Kjo veprim është e pakthyeshme. Kërkesat dhe imazhet e cache-t të rrjetit do të fshihen.";
 "CLEAR_READ_HISTORY" = "Pastro Historinë e Leximit";
@@ -127,9 +123,6 @@
 "DEFAULT_READING_MODE" = "Mënyra Standarde e Leximit";
 "PILLARBOX" = "Pillarbox";
 "PILLARBOX_AMOUNT" = "Sasia e Pillarbox";
-"ANILIST_LOGIN_NEEDED_TEXT" = "Nevojitet hyrja në AniList për të vazhduar.";
-"MAL_LOGIN_NEEDED" = "Nevojitet Hyrja në MyAnimeList";
-"MAL_LOGIN_NEEDED_TEXT" = "Nevojitet hyrja në MyAnimeList për të vazhduar.";
 "BACKUP_ERROR_TEXT" = "Një gabim u has gjatë rikthimit: %@. Kopja rezervë mund të jetë e pavlefshme.";
 "REMOVE_DOWNLOADS_CONFIRM" = "Hiqi të gjitha shkarkimet e zgjedhura?";
 "NO_WIFI_ALERT_TITLE" = "Pa Wi-Fi";
@@ -163,7 +156,6 @@
 "MIGRATION" = "Migrimi";
 "PILLARBOX_ORIENTATION" = "Orientimi i Pillarbox";
 "BOTH" = "Të dyja";
-"ANILIST_LOGIN_NEEDED" = "Nevojitet Hyrja në AniList";
 "PILLARBOX_ORIENTATION_INFO" = "Orientimi përcakton për cilat orientime duhet të aktivizohet pillarboxing.";
 "BACKUP_ERROR" = "Gabim në Kopjen Rezervë";
 "ADD_TO_CATEGORIES" = "Shto në Kategoriat";
@@ -284,10 +276,6 @@
 "APPEARANCE_LIGHT" = "E Ndritshme";
 "APPEARANCE_DARK" = "E Errët";
 "USE_SYSTEM_APPEARANCE" = "Përdor Pamjen e Sistemit";
-"MANGA_PAGE" = "Faqja e Mangës";
-"SHOW_SOURCE_LABEL" = "Trego Etiketën e Burimit";
-"USE_MANGA_TINT" = "Përdor Ngjyrën e Mangës";
-"USE_MANGA_TINT_INFO" = "Ngjyros faqet e mangës bazuar në ngjyrën e imazhit të kopertinës";
 "MANGA_PER_ROW" = "Manga për rresht";
 "PORTRAIT" = "Portret";
 "LANDSCAPE" = "Peizazh";

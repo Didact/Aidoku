@@ -41,7 +41,7 @@ extension MangaManager {
                 context: context
             )
             // add to default category
-            let defaultCategory = UserDefaults.standard.stringArray(forKey: "Library.defaultCategory")?.first
+            let defaultCategory = UserDefaults.standard.string(forKey: "Library.defaultCategory")
             if let defaultCategory {
                 let hasCategory = CoreDataManager.shared.hasCategory(title: defaultCategory, context: context)
                 if hasCategory {
@@ -59,6 +59,9 @@ extension MangaManager {
                 LogManager.logger.error("MangaManager.addToLibrary: \(error.localizedDescription)")
             }
         }
+        // add enhanced trackers
+        await TrackerManager.shared.bindEnhancedTrackers(manga: manga)
+
         NotificationCenter.default.post(
             name: .addToLibrary,
             object: manga.toOld()

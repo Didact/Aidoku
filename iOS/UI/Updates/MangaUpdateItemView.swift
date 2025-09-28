@@ -5,22 +5,23 @@
 //  Created by axiel7 on 10/02/2024.
 //
 
+import AidokuRunner
 import SwiftUI
 import NukeUI
 
 struct MangaUpdateItemView: View {
-
     private let coverWidth: CGFloat = 56
     private let coverHeight: CGFloat = 56
     private let cornerRadius: CGFloat = 5
     private let chaptersLimit = 5
 
-    var manga: Manga?
-    let updates: [MangaUpdatesView.MangaUpdateInfo]
-    let count: Int
-    let viewed: Bool
+    var updates: [MangaUpdatesView.UpdateInfo]
 
-    init(updates: [MangaUpdatesView.MangaUpdateInfo]) {
+    private let manga: AidokuRunner.Manga?
+    private let count: Int
+    private let viewed: Bool
+
+    init(updates: [MangaUpdatesView.UpdateInfo]) {
         self.updates = updates
         self.count = updates.count
         self.manga = updates.first?.manga
@@ -29,16 +30,12 @@ struct MangaUpdateItemView: View {
 
     var body: some View {
         HStack(alignment: count == 1 ? .center : .top) {
-            LazyImage(url: manga?.coverUrl) { state in
-                if let image = state.image {
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    Image("MangaPlaceholder")
-                }
-            }
-            .frame(width: coverWidth, height: coverHeight)
+            SourceImageView(
+                source: manga.flatMap { SourceManager.shared.source(for: $0.sourceKey) },
+                imageUrl: manga?.cover ?? "",
+                width: coverWidth,
+                height: coverHeight
+            )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
@@ -48,21 +45,21 @@ struct MangaUpdateItemView: View {
 
             VStack(alignment: .leading) {
                 Text(manga?.title ?? "")
-                    .foregroundColor(viewed ? .secondary : .primary)
+                    .foregroundStyle(viewed ? .secondary : .primary)
                     .lineLimit(2)
 
                 ForEach(updates.prefix(chaptersLimit)) { item in
                     if let chapterTitle = item.chapter?.makeTitle() {
                         Text(chapterTitle)
                             .font(.footnote)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
                 if count > chaptersLimit {
-                    Text("\(count - chaptersLimit)_PLUS_MORE")
+                    Text(String(format: NSLocalizedString("%lld_PLUS_MORE"), count - chaptersLimit))
                         .font(.footnote)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }

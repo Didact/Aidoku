@@ -7,7 +7,7 @@
 
 import CoreData
 
-struct BackupTrackItem: Codable {
+struct BackupTrackItem: Codable, Hashable {
     var id: String
     var trackerId: String
     var mangaId: String
@@ -20,7 +20,6 @@ struct BackupTrackItem: Codable {
         mangaId = trackObject.mangaId ?? ""
         sourceId = trackObject.sourceId ?? ""
         title = trackObject.title
-
     }
 
     func toObject(context: NSManagedObjectContext? = nil) -> TrackObject {

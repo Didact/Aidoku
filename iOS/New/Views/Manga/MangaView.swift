@@ -10,9 +10,9 @@ import NukeUI
 import SwiftUI
 
 struct MangaView: View {
-    let source: AidokuRunner.Source?
-
     @StateObject private var viewModel: ViewModel
+
+    @State private var scrollToChapterKey: String?
 
     @State private var editMode = EditMode.inactive
     @State private var selectedChapters = Set<String>()
@@ -27,125 +27,140 @@ struct MangaView: View {
 
     private var path: NavigationCoordinator
 
-    init(source: AidokuRunner.Source, manga: AidokuRunner.Manga, path: NavigationCoordinator) {
-        self.source = source
+    init(
+        source: AidokuRunner.Source? = nil,
+        manga: AidokuRunner.Manga,
+        path: NavigationCoordinator,
+        scrollToChapterKey: String? = nil
+    ) {
+        let source = source ?? SourceManager.shared.source(for: manga.sourceKey)
         self._viewModel = StateObject(wrappedValue: ViewModel(source: source, manga: manga))
         self.path = path
+        self._scrollToChapterKey = State(initialValue: scrollToChapterKey)
     }
 
     var body: some View {
-        let list = List(selection: $selectedChapters) {
-            headerView
+        let list = ScrollViewReader { proxy in
+            List(selection: $selectedChapters) {
+                headerView
 
-            if let error = viewModel.error {
-                ErrorView(error: error) {
-                    viewModel.error = nil
-                    await viewModel.fetchData()
-                }
-                .frame(maxWidth: .infinity)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            } else {
-                ForEach(viewModel.chapters.indices, id: \.self) { index in
-                    let chapter = viewModel.chapters[index]
-                    viewForChapter(chapter, index: index)
-                }
-
-                if !viewModel.chapters.isEmpty {
-                    VStack {
-                        Divider() // final, full width separator
-                        Color.clear.frame(height: 28) // padding for bottom of list
+                if let error = viewModel.error {
+                    ErrorView(error: error) {
+                        viewModel.error = nil
+                        await viewModel.fetchData()
                     }
-                    .padding(.top, {
-                        // add a little spacing above on ios 15, since the separator ends up hidden
-                        if #available(iOS 16.0, *) { 0 } else { 0.5 }
-                    }())
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(.zero)
+                } else {
+                    ForEach(viewModel.chapters.indices, id: \.self) { index in
+                        let chapter = viewModel.chapters[index]
+                        viewForChapter(chapter, index: index)
+                    }
+
+                    if !viewModel.chapters.isEmpty {
+                        VStack {
+                            Divider() // final, full width separator
+                            Color.clear.frame(height: 28) // padding for bottom of list
+                        }
+                        .padding(.top, {
+                            // add a little spacing above on ios 15, since the separator ends up hidden
+                            if #available(iOS 16.0, *) { 0 } else { 0.5 }
+                        }())
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(.zero)
+                    }
                 }
             }
-        }
-        // decrease the min row height for the bottom separator/spacing
-        .environment(\.defaultMinListRowHeight, 10)
-        .transition(.opacity)
-        .listStyle(.plain)
-        .refreshable {
-            await viewModel.refresh()
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog(
-            NSLocalizedString("REMOVE_ALL_DOWNLOADS"),
-            isPresented: $showRemoveAllConfirm,
-            actions: {
-                Button(NSLocalizedString("CANCEL"), role: .cancel) {}
-                Button(NSLocalizedString("REMOVE"), role: .destructive) {
-                    DownloadManager.shared.deleteChapters(for: viewModel.manga.toOld())
+            // decrease the min row height for the bottom separator/spacing
+            .environment(\.defaultMinListRowHeight, 10)
+            .transition(.opacity)
+            .listStyle(.plain)
+            .refreshable {
+                await viewModel.refresh()
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog(
+                NSLocalizedString("REMOVE_ALL_DOWNLOADS"),
+                isPresented: $showRemoveAllConfirm,
+                actions: {
+                    Button(NSLocalizedString("CANCEL"), role: .cancel) {}
+                    Button(NSLocalizedString("REMOVE"), role: .destructive) {
+                        DownloadManager.shared.deleteChapters(for: viewModel.manga.toOld())
+                    }
+                },
+                message: {
+                    Text(NSLocalizedString("REMOVE_ALL_DOWNLOADS_CONFIRM"))
                 }
-            },
-            message: {
-                Text(NSLocalizedString("REMOVE_ALL_DOWNLOADS_CONFIRM"))
-            }
-        )
-        .alert(
-            NSLocalizedString("NO_WIFI_ALERT_TITLE"),
-            isPresented: $showConnectionAlert,
-            actions: {
-                Button(NSLocalizedString("OK"), role: .cancel) {}
-            },
-            message: {
-                Text(NSLocalizedString("NO_WIFI_ALERT_MESSAGE"))
-            }
-        )
-        .scrollBackgroundHiddenPlease()
-        .navigationBarBackButtonHidden(editMode == .active)
-        .fullScreenCover(isPresented: $showingCoverView) {
-            MangaCoverPageView(
-                source: source,
-                manga: viewModel.manga
             )
-        }
-        .task {
-            await viewModel.fetchDetails()
-        }
-        .onChange(of: editMode) { mode in
-            guard let navigationController = path.rootViewController?.navigationController
-            else { return }
-            if mode == .active {
-                UIView.animate(withDuration: 0.3) {
-                    navigationController.isToolbarHidden = false
-                    navigationController.toolbar.alpha = 1
-                    if #available(iOS 26.0, *) {
-                        navigationController.tabBarController?.isTabBarHidden = true
+            .alert(
+                NSLocalizedString("NO_WIFI_ALERT_TITLE"),
+                isPresented: $showConnectionAlert,
+                actions: {
+                    Button(NSLocalizedString("OK"), role: .cancel) {}
+                },
+                message: {
+                    Text(NSLocalizedString("NO_WIFI_ALERT_MESSAGE"))
+                }
+            )
+            .scrollBackgroundHiddenPlease()
+            .navigationBarBackButtonHidden(editMode == .active)
+            .fullScreenCover(isPresented: $showingCoverView) {
+                MangaCoverPageView(
+                    source: viewModel.source,
+                    manga: viewModel.manga
+                )
+            }
+            .task {
+                await viewModel.markOpened()
+                await viewModel.fetchDetails()
+                if let scrollToChapterKey {
+                    withAnimation {
+                        proxy.scrollTo(scrollToChapterKey, anchor: .center)
+                    }
+                    self.scrollToChapterKey = nil
+                }
+            }
+            .onChange(of: editMode) { mode in
+                guard let navigationController = path.rootViewController?.navigationController
+                else { return }
+                if mode == .active {
+                    UIView.animate(withDuration: 0.3) {
+                        navigationController.isToolbarHidden = false
+                        navigationController.toolbar.alpha = 1
+                        if #available(iOS 26.0, *) {
+                            navigationController.tabBarController?.isTabBarHidden = true
+                        }
+                    }
+                } else {
+                    UIView.animate(withDuration: 0.3) {
+                        navigationController.toolbar.alpha = 0
+                        if #available(iOS 26.0, *) {
+                            navigationController.tabBarController?.isTabBarHidden = false
+                        }
+                    } completion: { _ in
+                        navigationController.isToolbarHidden = true
                     }
                 }
-            } else {
-                UIView.animate(withDuration: 0.3) {
-                    navigationController.toolbar.alpha = 0
-                    if #available(iOS 26.0, *) {
-                        navigationController.tabBarController?.isTabBarHidden = false
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .trackItemAdded)) { output in
+                guard let item = output.object as? TrackItem else { return }
+                Task {
+                    if let result = await viewModel.checkTrackerSync(item: item) {
+                        syncWithTracker(result: result)
                     }
-                } completion: { _ in
-                    navigationController.isToolbarHidden = true
                 }
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .trackItemAdded)) { output in
-            guard let item = output.object as? TrackItem else { return }
-            Task {
-                if let chapterNum = await viewModel.checkTrackerSync(item: item) {
-                    syncWithTracker(chapterNum: chapterNum)
+            .onReceive(NotificationCenter.default.publisher(for: .syncTrackItem)) { output in
+                guard let item = output.object as? TrackItem else { return }
+                Task {
+                    if let result = await viewModel.checkTrackerSync(item: item) {
+                        syncWithTracker(result: result)
+                    }
                 }
             }
+            .environment(\.editMode, $editMode)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .syncTrackItem)) { output in
-            guard let item = output.object as? TrackItem else { return }
-            Task {
-                if let chapterNum = await viewModel.checkTrackerSync(item: item) {
-                    syncWithTracker(chapterNum: chapterNum)
-                }
-            }
-        }
-        .environment(\.editMode, $editMode)
 
         if #available(iOS 26.0, *) {
             list
@@ -171,7 +186,7 @@ extension MangaView {
     var headerView: some View {
         ZStack {
             MangaDetailsHeaderView(
-                source: source,
+                source: viewModel.source,
                 manga: $viewModel.manga,
                 chapters: $viewModel.chapters,
                 nextChapter: $viewModel.nextChapter,
@@ -218,7 +233,7 @@ extension MangaView {
         }
 
         ChapterCellView(
-            source: source,
+            source: viewModel.source,
             sourceKey: viewModel.manga.sourceKey,
             chapter: chapter,
             read: viewModel.readingHistory[chapter.key]?.page == -1,
@@ -445,15 +460,13 @@ extension MangaView {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis")
+                MoreIcon()
             }
         } else {
-            Button {
+            DoneButton {
                 withAnimation {
                     editMode = .inactive
                 }
-            } label: {
-                Text(NSLocalizedString("DONE")).bold()
             }
         }
     }
@@ -594,7 +607,7 @@ extension MangaView {
         var mangaWithFilteredChapters = viewModel.manga
         mangaWithFilteredChapters.chapters = viewModel.chapters
         let readerController = ReaderViewController(
-            source: source,
+            source: viewModel.source,
             manga: mangaWithFilteredChapters,
             chapter: chapter
         )
@@ -620,22 +633,21 @@ extension MangaView {
         path.present(activityViewController)
     }
 
-    func syncWithTracker(chapterNum: Float) {
-        // there's a bug where swiftui alert isn't shown so using uikit alert instead
-        let alert = UIAlertController(
-            title: NSLocalizedString("SYNC_WITH_TRACKER"),
-            message: String(format: NSLocalizedString("SYNC_WITH_TRACKER_INFO"), chapterNum),
-            preferredStyle: .alert
-        )
-
-        alert.addAction(UIAlertAction(title: NSLocalizedString("CANCEL"), style: .cancel) { _ in })
-
-        alert.addAction(UIAlertAction(title: NSLocalizedString("OK"), style: .default) { _ in
+    func syncWithTracker(result: MangaView.ViewModel.TrackerSyncResult) {
+        func sync() {
             guard
                 let chapters = viewModel.manga.chapters,
-                let lastReadChapter = chapters.firstIndex(where: {
-                    $0.chapterNumber != nil && floor($0.chapterNumber!) <= chapterNum
-                })
+                let lastReadChapter = {
+                    if result.volume {
+                        chapters.firstIndex(where: {
+                            $0.volumeNumber != nil && floor($0.volumeNumber!) <= result.number
+                        })
+                    } else {
+                        chapters.firstIndex(where: {
+                            $0.chapterNumber != nil && floor($0.chapterNumber!) <= result.number
+                        })
+                    }
+                }()
             else {
                 return
             }
@@ -643,9 +655,26 @@ extension MangaView {
             Task {
                 await viewModel.markRead(chapters: syncChapters)
             }
-        })
+        }
 
-        path.present(alert)
+        if result.tracker is EnhancedTracker {
+            // we don't need to confirm syncing with enhanced trackers
+            sync()
+        } else {
+            // there's a bug where swiftui alert isn't shown so using uikit alert instead
+            let alert = UIAlertController(
+                title: NSLocalizedString("SYNC_WITH_TRACKER"),
+                message: String(format: NSLocalizedString("SYNC_WITH_TRACKER_INFO"), result.number),
+                preferredStyle: .alert
+            )
+
+            alert.addAction(UIAlertAction(title: NSLocalizedString("CANCEL"), style: .cancel) { _ in })
+
+            alert.addAction(UIAlertAction(title: NSLocalizedString("OK"), style: .default) { _ in
+            })
+
+            path.present(alert)
+        }
     }
 
     func showLoadingIndicator() {

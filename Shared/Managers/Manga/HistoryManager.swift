@@ -31,7 +31,7 @@ extension HistoryManager {
                 LogManager.logger.error("HistoryManager.setProgress: \(error.localizedDescription)")
             }
         }
-        NotificationCenter.default.post(name: NSNotification.Name("historySet"), object: (chapter, progress))
+        NotificationCenter.default.post(name: .historySet, object: (chapter, progress))
     }
 
     func addHistory(chapters: [Chapter], date: Date = Date()) async {
@@ -54,11 +54,13 @@ extension HistoryManager {
                 LogManager.logger.error("HistoryManager.addHistory: \(error.localizedDescription)")
             }
         }
-        // update tracker with chapter with largest number
-        if let maxChapter = chapters.max(by: { $0.chapterNum ?? 0 < $1.chapterNum ?? 0 }) {
-            await TrackerManager.shared.setCompleted(chapter: maxChapter)
+        if UserDefaults.standard.bool(forKey: "Tracking.updateAfterReading") {
+            // update tracker with chapter with largest number
+            if let maxChapter = chapters.max(by: { $0.chapterNum ?? 0 < $1.chapterNum ?? 0 }) {
+                await TrackerManager.shared.setCompleted(chapter: maxChapter)
+            }
         }
-        NotificationCenter.default.post(name: NSNotification.Name("historyAdded"), object: chapters)
+        NotificationCenter.default.post(name: .historyAdded, object: chapters)
     }
 
     func addHistory(
@@ -88,47 +90,57 @@ extension HistoryManager {
                 LogManager.logger.error("HistoryManager.addHistory: \(error.localizedDescription)")
             }
         }
-        // update tracker with chapter with largest number
-        if let maxChapter = chapters.max(by: { $0.chapterNumber ?? 0 < $1.chapterNumber ?? 0 }) {
-            await TrackerManager.shared.setCompleted(
-                chapter: maxChapter.toOld(
-                    sourceId: sourceId,
-                    mangaId: mangaId
+        if UserDefaults.standard.bool(forKey: "Tracking.updateAfterReading") {
+            // update tracker with chapter with largest number
+            if let maxChapter = chapters.max(by: { $0.chapterNumber ?? 0 < $1.chapterNumber ?? 0 }) {
+                await TrackerManager.shared.setCompleted(
+                    chapter: maxChapter.toOld(
+                        sourceId: sourceId,
+                        mangaId: mangaId
+                    )
                 )
-            )
+            }
         }
         NotificationCenter.default.post(
-            name: NSNotification.Name("historyAdded"),
+            name: .historyAdded,
             object: chapters.map { $0.toOld(sourceId: sourceId, mangaId: mangaId) }
         )
     }
 
     func removeHistory(chapters: [Chapter]) async {
         await CoreDataManager.shared.removeHistory(chapters: chapters)
-        NotificationCenter.default.post(name: NSNotification.Name("historyRemoved"), object: chapters)
+        NotificationCenter.default.post(name: .historyRemoved, object: chapters)
     }
 
     func removeHistory(
         sourceId: String,
         mangaId: String,
-        chapters: [AidokuRunner.Chapter]
+        chapterIds: [String]
     ) async {
         await CoreDataManager.shared.removeHistory(
             sourceId: sourceId,
             mangaId: mangaId,
-            chapterIds: chapters.map { $0.key }
+            chapterIds: chapterIds
         )
         NotificationCenter.default.post(
-            name: NSNotification.Name("historyRemoved"),
-            object: chapters.map { $0.toOld(sourceId: sourceId, mangaId: mangaId) }
+            name: .historyRemoved,
+            object: chapterIds.map {
+                Chapter(
+                    sourceId: sourceId,
+                    id: $0,
+                    mangaId: mangaId,
+                    title: "",
+                    sourceOrder: -1
+                )
+            }
         )
     }
 
-    func removeHistory(manga: Manga) async {
+    func removeHistory(sourceId: String, mangaId: String) async {
         await CoreDataManager.shared.container.performBackgroundTask { context in
-            CoreDataManager.shared.removeHistory(sourceId: manga.sourceId, mangaId: manga.id, context: context)
+            CoreDataManager.shared.removeHistory(sourceId: sourceId, mangaId: mangaId, context: context)
             try? context.save()
         }
-        NotificationCenter.default.post(name: NSNotification.Name("historyRemoved"), object: manga)
+        NotificationCenter.default.post(name: .historyRemoved, object: Manga(sourceId: sourceId, id: mangaId))
     }
 }

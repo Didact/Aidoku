@@ -62,22 +62,18 @@ struct TrackerSearchView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
+                ToolbarItem(placement: .cancellationAction) {
+                    CloseButton {
                         if searchBarFocused == true {
                             searchBarFocused = false
                         } else {
                             dismiss()
                         }
-                    } label: {
-                        Text(NSLocalizedString("CANCEL"))
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                ToolbarItem(placement: .confirmationAction) {
+                    DoneButton {
                         track()
-                    } label: {
-                        Text(NSLocalizedString("TRACK"))
                     }
                     .disabled(selectedItem == nil)
                 }
@@ -94,7 +90,11 @@ struct TrackerSearchView: View {
             .animation(.default, value: results)
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                results = await tracker.search(for: manga, includeNsfw: includeNsfw)
+                do {
+                    results = try await tracker.search(for: manga, includeNsfw: includeNsfw)
+                } catch {
+                    LogManager.logger.error("Failed to search tracker \(tracker.id): \(error)")
+                }
                 loading = false
             }
             .onChange(of: query) { _ in
@@ -137,7 +137,11 @@ struct TrackerSearchView: View {
             }
             guard !Task.isCancelled else { return }
 
-            results = await tracker.search(title: query, includeNsfw: includeNsfw)
+            do {
+                results = try await tracker.search(title: query, includeNsfw: includeNsfw)
+            } catch {
+                LogManager.logger.error("Failed to search tracker \(tracker.id): \(error)")
+            }
         }
     }
 
@@ -150,17 +154,7 @@ struct TrackerSearchView: View {
         loading = true
 
         Task {
-            let hasReadChapters = await CoreDataManager.shared.container.performBackgroundTask { context in
-                CoreDataManager.shared.hasHistory(sourceId: self.manga.sourceId, mangaId: self.manga.id, context: context)
-            }
-            let id = await tracker.register(trackId: result.id, hasReadChapters: hasReadChapters)
-            await TrackerManager.shared.saveTrackItem(item: TrackItem(
-                id: id ?? result.id,
-                trackerId: tracker.id,
-                sourceId: manga.sourceId,
-                mangaId: manga.id,
-                title: result.title
-            ))
+            await TrackerManager.shared.register(tracker: tracker, manga: manga, item: result)
 
             dismiss()
         }

@@ -12,7 +12,6 @@ import UIKit
 #endif
 
 class AniListApi {
-
     private let encoder = JSONEncoder()
 
     // Registered under Skitty's AniList account
@@ -25,7 +24,6 @@ class AniListApi {
 
 // MARK: - Data
 extension AniListApi {
-
     func search(query: String, nsfw: Bool = true) async -> ALPage? {
         let response: GraphQLResponse<AniListSearchResponse>? = await request(
             GraphQLVariableQuery(
@@ -76,7 +74,7 @@ extension AniListApi {
     }
 
     private func request<T: Codable, D: Encodable>(_ data: D) async -> GraphQLResponse<T>? {
-        guard let url = URL(string: "https://graphql.anilist.co") else { return nil }
+        let url = URL(string: "https://graphql.anilist.co")!
         var request = oauth.authorizedRequest(for: url)
 
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -95,11 +93,10 @@ extension AniListApi {
             if isLoggedIn && !oauth.tokens!.askedForRefresh {
                 oauth.tokens!.askedForRefresh = true
                 oauth.saveTokens()
-
 #if !os(macOS)
                 await (UIApplication.shared.delegate as? AppDelegate)?.presentAlert(
-                    title: NSLocalizedString("ANILIST_LOGIN_NEEDED", comment: ""),
-                    message: NSLocalizedString("ANILIST_LOGIN_NEEDED_TEXT", comment: "")
+                    title: String(format: NSLocalizedString("%@_TRACKER_LOGIN_NEEDED"), "AniList"),
+                    message: String(format: NSLocalizedString("%@_TRACKER_LOGIN_NEEDED_TEXT"), "AniList")
                 )
 #endif
             }
@@ -110,7 +107,6 @@ extension AniListApi {
 }
 
 private extension AniListApi {
-
     func encodeDate(_ value: Date?) -> AniListDate? {
         if let date = value {
             if date == Date(timeIntervalSince1970: 0) {
@@ -124,13 +120,13 @@ private extension AniListApi {
 
     func getStatusString(status: TrackStatus) -> String? {
         switch status {
-        case .reading: return "CURRENT"
-        case .planning: return "PLANNING"
-        case .completed: return "COMPLETED"
-        case .dropped: return "DROPPED"
-        case .paused: return "PAUSED"
-        case .rereading: return "REPEATING"
-        default: return nil
+            case .reading: return "CURRENT"
+            case .planning: return "PLANNING"
+            case .completed: return "COMPLETED"
+            case .dropped: return "DROPPED"
+            case .paused: return "PAUSED"
+            case .rereading: return "REPEATING"
+            default: return nil
         }
     }
 }

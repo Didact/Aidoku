@@ -130,6 +130,14 @@ struct ReaderSettingsView: View {
 
                     SettingView(
                         setting: .init(
+                            key: "Reader.invertTapZones",
+                            title: NSLocalizedString("INVERT_TAP_ZONES"),
+                            value: .toggle(.init())
+                        )
+                    )
+
+                    SettingView(
+                        setting: .init(
                             key: "Reader.animatePageTransitions",
                             title: NSLocalizedString("ANIMATE_PAGE_TRANSITIONS"),
                             value: .toggle(.init())
@@ -196,6 +204,14 @@ struct ReaderSettingsView: View {
                                 ))
                             )
                         )
+                        SettingView(
+                            setting: .init(
+                                key: "Reader.pagedIsolateFirstPage",
+                                title: NSLocalizedString("ISOLATE_FIRST_PAGE"),
+                                notification: .init("Reader.pagedIsolateFirstPage"),
+                                value: .toggle(.init())
+                            )
+                        )
                     }
                 }
 
@@ -249,11 +265,9 @@ struct ReaderSettingsView: View {
             .animation(.default, value: upscaleImages.value)
             .navigationTitle(NSLocalizedString("READER_SETTINGS"))
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                ToolbarItem(placement: .cancellationAction) {
+                    CloseButton {
                         dismiss()
-                    } label: {
-                        Text(NSLocalizedString("DONE")).bold()
                     }
                 }
             }

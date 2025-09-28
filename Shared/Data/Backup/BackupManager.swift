@@ -17,10 +17,6 @@ class BackupManager {
         Self.directory.contentsByDateModified
     }
 
-//    static var backups: [Backup] {
-//        Self.backupUrls.compactMap { Backup.load(from: $0) }
-//    }
-
     func save(backup: Backup, url: URL? = nil) {
         Self.directory.createDirectory()
         let encoder = PropertyListEncoder()
@@ -38,9 +34,9 @@ class BackupManager {
         }
     }
 
-    func saveNewBackup() {
+    func saveNewBackup(options: BackupOptions) {
         Task {
-            save(backup: await createBackup())
+            save(backup: await createBackup(options: options))
         }
     }
 
@@ -67,28 +63,69 @@ class BackupManager {
         }
     }
 
-    func createBackup() async -> Backup {
+    struct BackupOptions {
+        let libraryEntries: Bool
+        let history: Bool
+        let chapters: Bool
+        let tracking: Bool
+        let categories: Bool
+        let settings: Bool
+        let sourceLists: Bool
+        let sensitiveSettings: Bool
+    }
+
+    func createBackup(options: BackupOptions) async -> Backup {
         await CoreDataManager.shared.container.performBackgroundTask { context in
-            let library = CoreDataManager.shared.getLibraryManga(context: context).map {
-                BackupLibraryManga(libraryObject: $0)
+            let library: [BackupLibraryManga] = if options.libraryEntries {
+                CoreDataManager.shared.getLibraryManga(context: context).map {
+                    BackupLibraryManga(libraryObject: $0, skipCategories: !options.categories)
+                }
+            } else {
+                []
             }
-            let history = CoreDataManager.shared.getHistory(context: context).map {
-                BackupHistory(historyObject: $0)
+            let history: [BackupHistory] = if options.history {
+                CoreDataManager.shared.getHistory(context: context).map {
+                    BackupHistory(historyObject: $0)
+                }
+            } else {
+                []
             }
-            let manga = CoreDataManager.shared.getManga(context: context).map {
-                BackupManga(mangaObject: $0)
+            let manga: [BackupManga] = if options.libraryEntries {
+                CoreDataManager.shared.getManga(context: context).map {
+                    BackupManga(mangaObject: $0)
+                }
+            } else {
+                []
             }
-            let chapters = CoreDataManager.shared.getChapters(context: context).map {
-                BackupChapter(chapterObject: $0)
+            let chapters: [BackupChapter] = if options.chapters {
+                CoreDataManager.shared.getChapters(context: context).map {
+                    BackupChapter(chapterObject: $0)
+                }
+            } else {
+                []
             }
-            let trackItems = CoreDataManager.shared.getTracks(context: context).compactMap {
-                BackupTrackItem(trackObject: $0)
+            let trackItems: [BackupTrackItem] = if options.tracking {
+                CoreDataManager.shared.getTracks(context: context).compactMap {
+                    BackupTrackItem(trackObject: $0)
+                }
+            } else {
+                []
             }
-            let categories = CoreDataManager.shared.getCategoryTitles(context: context)
+            let categories: [String] = if options.categories {
+                CoreDataManager.shared.getCategoryTitles(context: context)
+            } else {
+                []
+            }
             let sources = CoreDataManager.shared.getSources(context: context).compactMap {
                 $0.id
             }
-            let sourceLists = SourceManager.shared.sourceListsStrings
+            let sourceLists = options.sourceLists ? SourceManager.shared.sourceListsStrings : []
+
+            let settings: [String: JsonAnyValue]? = if options.settings {
+                self.exportSettings(includeSensitive: options.sensitiveSettings)
+            } else {
+                nil
+            }
 
             return Backup(
                 library: library,
@@ -99,10 +136,45 @@ class BackupManager {
                 categories: categories,
                 sources: sources,
                 sourceLists: sourceLists,
+                settings: settings,
                 date: Date(),
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
             )
         }
+    }
+
+    private func exportSettings(includeSensitive: Bool) -> [String: JsonAnyValue] {
+        var allSettings = UserDefaults.standard.dictionaryRepresentation()
+
+        // filter out potentially sensitive info
+        if !includeSensitive {
+            let sensitiveKeywords = ["login", "password", "token", "auth", "cookie"]
+            for key in allSettings.keys where sensitiveKeywords.contains(where: key.lowercased().contains) {
+                allSettings.removeValue(forKey: key)
+            }
+        }
+
+        var convertedSettings: [String: JsonAnyValue] = [:]
+
+        // convert to export compatible types
+        for (key, value) in allSettings {
+            if key == "Browse.sourceLists" {
+                continue // skip source lists, as these are stored separately
+            }
+            if let value = value as? String {
+                convertedSettings[key] = .string(value)
+            } else if let value = value as? Int {
+                convertedSettings[key] = .int(value)
+            } else if let value = value as? Double {
+                convertedSettings[key] = .double(value)
+            } else if let value = value as? Bool {
+                convertedSettings[key] = .bool(value)
+            } else if let value = value as? [String] {
+                convertedSettings[key] = .array(value)
+            }
+        }
+
+        return convertedSettings
     }
 
     func renameBackup(url: URL, name: String?) {
@@ -113,7 +185,6 @@ class BackupManager {
 
     func removeBackup(url: URL) {
         try? FileManager.default.removeItem(at: url)
-        NotificationCenter.default.post(name: Notification.Name("updateBackupList"), object: nil)
     }
 
     enum BackupError: Error {
@@ -136,8 +207,17 @@ class BackupManager {
         }
     }
 
+    // swiftlint:disable:next cyclomatic_complexity
     func restore(from backup: Backup) async throws {
         Task {
+            // restore settings
+            if let settings = backup.settings {
+                for (key, value) in settings {
+                    UserDefaults.standard.set(value.toRaw(), forKey: key)
+                }
+            }
+
+            // restore source lists
             SourceManager.shared.clearSourceLists()
             guard let sourceLists = backup.sourceLists else { return }
             for sourceList in sourceLists {
@@ -196,11 +276,11 @@ class BackupManager {
                             $0.id == libraryBackupItem.mangaId && $0.sourceId == libraryBackupItem.sourceId
                         }) {
                             libraryObject.manga = manga
-                            if !libraryBackupItem.categories.isEmpty {
+                            if let categories = libraryBackupItem.categories, !categories.isEmpty {
                                 CoreDataManager.shared.addCategoriesToManga(
                                     sourceId: libraryBackupItem.sourceId,
                                     mangaId: libraryBackupItem.mangaId,
-                                    categories: libraryBackupItem.categories,
+                                    categories: categories,
                                     context: context
                                 )
                             }

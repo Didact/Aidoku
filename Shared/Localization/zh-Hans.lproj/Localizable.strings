@@ -154,10 +154,6 @@
 "APPEARANCE_LIGHT" = "浅色";
 "APPEARANCE_DARK" = "深色";
 "USE_SYSTEM_APPEARANCE" = "使用系统外观";
-"MANGA_PAGE" = "漫画页面";
-"SHOW_SOURCE_LABEL" = "显示来源标签";
-"USE_MANGA_TINT" = "使用漫画色调";
-"USE_MANGA_TINT_INFO" = "基于封面图像颜色为漫画页面上色";
 "MANGA_PER_ROW" = "每行漫画";
 "PORTRAIT" = "竖屏";
 "LANDSCAPE" = "横屏";
@@ -217,10 +213,6 @@
 "DISPLAY_LOGS" = "显示日志";
 "ADVANCED" = "高级";
 "RESET_TEXT" = "此操作无法撤销。所有数据，设置和缓存将被清除和重置。";
-"CLEAR_CHAPTER_CACHE" = "清除章节缓存";
-"CLEAR_CHAPTER_CACHE_TEXT" = "此操作无法撤销。缓存的章节将被清除并重新下载。";
-"CLEAR_MANGA_CACHE" = "清除漫画缓存";
-"CLEAR_MANGA_CACHE_TEXT" = "此操作无法撤销。不在你书库中的缓存漫画将被删除。";
 "CLEAR_NETWORK_CACHE" = "清除网络缓存";
 "CLEAR_NETWORK_CACHE_TEXT" = "此操作无法撤销。缓存的网络请求和图像将被清除。";
 "CLEAR_READ_HISTORY" = "清除阅读历史";
@@ -250,8 +242,9 @@
 "SINGLE_PAGE" = "单页";
 "PAGED" = "分页";
 "DOUBLE_PAGE" = "双页";
+"ISOLATE_FIRST_PAGE" = "首页总是单独显示";
 "MULTI_LANGUAGE" = "多语言";
-"TRACKERS" = "跟踪器";
+"TRACKERS" = "追踪器";
 "LOGOUT" = "退出";
 "LOGOUT_FROM_%@" = "从 %@ 注销？";
 "STATUS" = "状态";
@@ -287,6 +280,7 @@
 "FAILED_CHAPTER_LOAD" = "加载章节失败";
 "TOTAL_CHAPTERS" = "总章节数";
 "UNREAD_CHAPTERS" = "未读章节";
+"SET_AS_SINGLE_PAGE" = "作为单独页面显示";
 "FAILED_CHAPTER_LOAD_INFO" = "你可能离线了或者来源网站出现问题。";
 "%i_PAGES_LEFT" = "剩余 %i 页";
 "REMOVE_FROM_CATEGORY" = "从分类中移除";
@@ -323,7 +317,7 @@
 "SYNC_WITH_TRACKER" = "与追踪器同步";
 "SYNC_WITH_TRACKER_INFO" = "追踪器中的最新章节（%g）高于您已读的最新章节。是否同步本机历史？";
 "UPLOAD_DATE" = "上传日期";
-"TRACKING" = "跟踪";
+"TRACKING" = "追踪";
 "ALL_CHAPTERS_READ" = "所有章节已读";
 "DEFAULT_READING_MODE" = "默认阅读模式";
 "PILLARBOX_AMOUNT" = "填充比例";
@@ -337,11 +331,9 @@
 "COPY" = "复制";
 "PIN" = "置顶";
 "UNPIN" = "取消置顶";
-"ANILIST_LOGIN_NEEDED" = "需要AniList登录";
-"ANILIST_LOGIN_NEEDED_TEXT" = "您的AniList令牌已过期，因此AniList将停止工作，直到您在设置中重新登录。";
+"%@_TRACKER_LOGIN_NEEDED" = "需要 %@ 登录";
+"%@_TRACKER_LOGIN_NEEDED_TEXT" = "您的 %@ 令牌已过期，因此该追踪器将停止工作，直到您在设置中重新登录。";
 "BACKUP_ERROR" = "备份恢复错误";
-"MAL_LOGIN_NEEDED" = "MyAnimeList 需要登录";
-"MAL_LOGIN_NEEDED_TEXT" = "您的 MyAnimeList 令牌已过期，因此 MyAnimeList 跟踪器将停止工作，直到您在设置中重新登录。";
 "BACKUP_ERROR_TEXT" = "恢复 %@ 时遇到错误。备份可能无效。";
 "PAUSE" = "暂停";
 "RESUME" = "继续";
@@ -555,3 +547,8 @@
 "RESET_FOCUS" = "重置焦点";
 "CHAPTER_FORWARD" = "章节向前";
 "CHAPTER_BACKWARD" = "章节后退";
+"CLEAR_SOURCE_CACHE" = "清除来源缓存";
+"CLEAR_SOURCE_CACHE_TEXT" = "将清除来源网址的缓存网络数据。这可能会导致加载时间暂时增加。";
+"RANGE_FROM" = "从";
+"RANGE_TO" = "到";
+"INVERT_TAP_ZONES" = "反转点击区域";

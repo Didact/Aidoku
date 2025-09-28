@@ -19,6 +19,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 #endif
 
     static let isSideloaded = Bundle.main.bundleIdentifier != canonicalID
+    static let isiCloudAvailable = FileManager.default.ubiquityIdentityToken != nil
+
     private var networkObserverId: UUID?
 
     private lazy var loadingAlert: UIAlertController = {
@@ -82,13 +84,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         UserDefaults.standard.register(
             defaults: [
                 "isSideloaded": Self.isSideloaded, // for icloud sync setting
+                "isiCloudAvailable": Self.isiCloudAvailable,
 
                 "General.incognitoMode": false,
                 "General.icloudSync": false,
                 "General.appearance": 0,
                 "General.useSystemAppearance": true,
-                "General.useMangaTint": true,
-                "General.showSourceLabel": true,
                 "General.portraitRows": UIDevice.current.userInterfaceIdiom == .pad ? 5 : 2,
                 "General.landscapeRows": UIDevice.current.userInterfaceIdiom == .pad ? 6 : 4,
 
@@ -103,7 +104,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Library.pinMangaType": 0,
                 "Library.lockLibrary": false,
 
-                "Library.defaultCategory": [""],
                 "Library.lockedCategories": [String](),
 
                 "Library.updateInterval": "daily",
@@ -129,6 +129,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Reader.cropBorders": false,
                 "Reader.disableQuickActions": false,
                 "Reader.tapZones": "disabled",
+                "Reader.invertTapZones": false,
                 "Reader.animatePageTransitions": true,
                 "Reader.backgroundColor": "black",
                 "Reader.pagesToPreload": 2,
@@ -137,7 +138,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Reader.pillarbox": false,
                 "Reader.pillarboxAmount": 15,
                 "Reader.pillarboxOrientation": "both",
-                "Reader.orientation": "device"
+                "Reader.orientation": "device",
+
+                "Tracking.updateAfterReading": true
             ]
         )
 
@@ -276,20 +279,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                             needsDetails: true,
                             needsChapters: false
                         ) {
-                            let scrollTo: Chapter?
-                            if let chapterId = url.pathComponents[safe: 2] {
-                                scrollTo = Chapter(
-                                    sourceId: source.id,
-                                    id: chapterId,
-                                    mangaId: manga.key,
-                                    title: nil,
-                                    sourceOrder: 0
+                            if let navigationController {
+                                navigationController.pushViewController(
+                                    MangaViewController(
+                                        source: source,
+                                        manga: manga,
+                                        parent: navigationController.topViewController,
+                                        scrollToChapterKey: url.pathComponents[safe: 2] // /sourceId/mangaId/chapterId
+                                    ),
+                                    animated: true
                                 )
-                            } else {
-                                scrollTo = nil
                             }
-                            let vc = MangaViewController(manga: manga.toOld(), scrollTo: scrollTo)
-                            navigationController?.pushViewController(vc, animated: true)
                         }
                     } else { // /sourceId
                         let vc: UIViewController = if let legacySource = source.legacySource {
@@ -403,20 +403,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                         needsChapters: false
                     ) else { return false }
 
-                    let chapter: Chapter? = if let chapterId = link?.chapterKey {
-                        Chapter(
-                            sourceId: targetSource.id,
-                            id: chapterId,
-                            mangaId: mangaId,
-                            title: nil,
-                            sourceOrder: 0
-                        )
-                    } else {
-                        nil
-                    }
-
                     navigationController.pushViewController(
-                        MangaViewController(manga: manga.toOld(), scrollTo: chapter), animated: true
+                        MangaViewController(
+                            source: targetSource,
+                            manga: manga,
+                            parent: navigationController.topViewController,
+                            scrollToChapterKey: link?.chapterKey
+                        ),
+                        animated: true
                     )
 
                     return true
