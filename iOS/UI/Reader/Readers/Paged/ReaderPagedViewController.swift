@@ -675,8 +675,29 @@ extension ReaderPagedViewController: UIContextMenuInteractionDelegate {
                 image: UIImage(systemName: "square.and.arrow.up")
             ) { _ in
                 if let image = pageView.image {
-                    let items = [image]
+                    let items: [Any]
+                    if let pngData = image.pngData() {
+                        let temporaryDirectory = if #available(iOS 16.0, *) {
+                            URL.temporaryDirectory
+                        } else {
+                            URL(string: "file://" + NSTemporaryDirectory())!
+                        }
+                        let imageURL = temporaryDirectory.appendingSafePathComponent(
+                            "\(self.chapter!.formattedTitle()) - \(self.currentPage).png"
+                        )
+                        try? pngData.write(to: imageURL)
+                        items = [imageURL]
+                    } else {
+                        items = [image]
+                    }
+
                     let activityController = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                    activityController.completionWithItemsHandler = { _, _, _, _ in
+                        guard let imageURL = items[0] as? URL else {
+                            return
+                        }
+                        try? FileManager.default.removeItem(at: imageURL)
+                    }
 
                     activityController.popoverPresentationController?.sourceView = self.view
                     activityController.popoverPresentationController?.sourceRect = CGRect(origin: location, size: .zero)
