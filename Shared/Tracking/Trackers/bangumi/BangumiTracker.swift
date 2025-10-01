@@ -5,6 +5,7 @@
 //  Created by dyphire on 22/9/2025.
 //
 
+import AidokuRunner
 import Foundation
 
 /// Bangumi tracker for Aidoku.
@@ -51,7 +52,10 @@ class BangumiTracker: OAuthTracker {
         guard let id = Int(trackId) else {
             throw BangumiTrackerError.invalidId
         }
-        await api.update(subject: id, update: update)
+        let success = await api.update(subject: id, update: update)
+        if !success {
+            throw BangumiTrackerError.updateFailed
+        }
     }
 
     func getState(trackId: String) async throws -> TrackState {
@@ -85,8 +89,8 @@ class BangumiTracker: OAuthTracker {
         URL(string: "https://bgm.tv/subject/\(trackId)")
     }
 
-    func search(for manga: Manga, includeNsfw: Bool) async -> [TrackSearchItem] {
-        await search(title: manga.title ?? "", nsfw: includeNsfw)
+    func search(for manga: AidokuRunner.Manga, includeNsfw: Bool) async -> [TrackSearchItem] {
+        await search(title: manga.title, nsfw: includeNsfw)
     }
 
     func search(title: String, includeNsfw: Bool) async -> [TrackSearchItem] {
@@ -102,7 +106,6 @@ class BangumiTracker: OAuthTracker {
             guard let subject = await api.getSubject(id: id) else { return [] }
             return [TrackSearchItem(
                 id: String(subject.id),
-                trackerId: self.id,
                 title: getDisplayTitle(for: subject),
                 coverUrl: getCoverUrl(for: subject),
                 description: subject.summary,
@@ -123,7 +126,6 @@ class BangumiTracker: OAuthTracker {
         return subjects.map {
             TrackSearchItem(
                 id: String($0.id),
-                trackerId: self.id,
                 title: getDisplayTitle(for: $0),
                 coverUrl: getCoverUrl(for: $0),
                 description: $0.summary,
@@ -229,4 +231,5 @@ enum BangumiTrackerError: Error {
     case invalidId
     case getStateFailed
     case notLoggedIn
+    case updateFailed
 }

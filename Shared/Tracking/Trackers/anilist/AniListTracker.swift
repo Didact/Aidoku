@@ -5,6 +5,7 @@
 //  Created by Koding Dev on 19/7/2022.
 //
 
+import AidokuRunner
 import Foundation
 
 /// AniList tracker for Aidoku.
@@ -138,8 +139,8 @@ class AniListTracker: OAuthTracker {
         URL(string: "https://anilist.co/manga/\(trackId)")
     }
 
-    func search(for manga: Manga, includeNsfw: Bool) async -> [TrackSearchItem] {
-        await search(title: manga.title ?? "", nsfw: includeNsfw)
+    func search(for manga: AidokuRunner.Manga, includeNsfw: Bool) async -> [TrackSearchItem] {
+        await search(title: manga.title, nsfw: includeNsfw)
     }
 
     func search(title: String, includeNsfw: Bool) async -> [TrackSearchItem] {
@@ -154,7 +155,6 @@ class AniListTracker: OAuthTracker {
             guard let media = await api.getMedia(id: id) else { return [] }
             return [TrackSearchItem(
                 id: String(media.id ?? 0),
-                trackerId: self.id,
                 title: media.title?.english ?? media.title?.romaji,
                 coverUrl: media.coverImage?.medium,
                 description: media.description,
@@ -175,7 +175,6 @@ class AniListTracker: OAuthTracker {
         return page.media.map {
             TrackSearchItem(
                 id: String($0.id ?? 0),
-                trackerId: self.id,
                 title: $0.title?.english ?? $0.title?.romaji,
                 coverUrl: $0.coverImage?.medium,
                 description: $0.description,
