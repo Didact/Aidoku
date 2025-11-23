@@ -110,10 +110,10 @@ enum Settings {
                 ))
             ),
             .init(
-                key: "DownloadManager",
-                title: NSLocalizedString("DOWNLOAD_MANAGER"),
+                key: "Downloads",
+                title: NSLocalizedString("DOWNLOADS"),
                 value: .page(.init(
-                    items: [],
+                    items: downloadSettings,
                     inlineTitle: true,
                     icon: .system(name: "arrow.down.circle.fill", color: "blue", inset: 6)
                 ))
@@ -129,7 +129,10 @@ extension Settings {
                 key: "General.appearance",
                 title: NSLocalizedString("APPEARANCE"),
                 requiresFalse: "General.useSystemAppearance",
-                value: .segment(.init(options: ["Light", "Dark"]))
+                value: .segment(.init(options: [
+                    NSLocalizedString("APPEARANCE_LIGHT"),
+                    NSLocalizedString("APPEARANCE_DARK")
+                ]))
             ),
             .init(
                 key: "General.useSystemAppearance",
@@ -164,6 +167,11 @@ extension Settings {
             .init(
                 key: "Library.unreadChapterBadges",
                 title: NSLocalizedString("UNREAD_CHAPTER_BADGES"),
+                value: .toggle(.init())
+            ),
+            .init(
+                key: "Library.downloadedChapterBadges",
+                title: NSLocalizedString("DOWNLOADED_CHAPTER_BADGES"),
                 value: .toggle(.init())
             ),
             .init(
@@ -216,63 +224,76 @@ extension Settings {
                 )
             ]))
         ),
-        .init(
-            title: NSLocalizedString("LIBRARY_UPDATING"),
-            value: .group(.init(items: [
-                .init(
-                    key: "Library.updateInterval",
-                    title: NSLocalizedString("UPDATE_INTERVAL"),
-                    value: .select(.init(
-                        values: ["never", "12hours", "daily", "2days", "weekly"],
-                        titles: [
-                            NSLocalizedString("NEVER"),
-                            NSLocalizedString("EVERY_12_HOURS"),
-                            NSLocalizedString("DAILY"),
-                            NSLocalizedString("EVERY_2_DAYS"),
-                            NSLocalizedString("WEEKLY")
-                        ]
-                    ))
-                ),
-                .init(
-                    key: "Library.skipTitles",
-                    title: NSLocalizedString("SKIP_TITLES"),
-                    value: .multiselect(.init(
-                        values: ["hasUnread", "completed", "notStarted"],
-                        titles: [
-                            NSLocalizedString("WITH_UNREAD_CHAPTERS"),
-                            NSLocalizedString("WITH_COMPLETED_STATUS"),
-                            NSLocalizedString("THAT_HAVENT_BEEN_READ")
-                        ]
-                    ))
-                ),
-                .init(
-                    key: "Library.excludedUpdateCategories",
-                    title: NSLocalizedString("EXCLUDED_CATEGORIES"),
-                    value: .custom
-                ),
-                .init(
-                    key: "Library.updateOnlyOnWifi",
-                    title: NSLocalizedString("ONLY_UPDATE_ON_WIFI"),
-                    value: .toggle(.init())
-                ),
-                .init(
-                    key: "Library.downloadOnlyOnWifi",
-                    title: NSLocalizedString("ONLY_DOWNLOAD_ON_WIFI"),
-                    value: .toggle(.init())
-                ),
-                .init(
-                    key: "Library.refreshMetadata",
-                    title: NSLocalizedString("REFRESH_METADATA"),
-                    value: .toggle(.init())
-                ),
-                .init(
-                    key: "Library.deleteDownloadAfterReading",
-                    title: NSLocalizedString("DELETE_DOWNLOAD_AFTER_READING"),
-                    value: .toggle(.init())
-                )
-            ]))
-        )
+        libraryUpdateGroup
     ]
+
+    private static let libraryUpdateGroup: Setting = {
+        var baseItems: [Setting] = [
+            .init(
+                key: "Library.updateInterval",
+                title: NSLocalizedString("UPDATE_INTERVAL"),
+                value: .select(.init(
+                    values: ["never", "12hours", "daily", "2days", "weekly"],
+                    titles: [
+                        NSLocalizedString("NEVER"),
+                        NSLocalizedString("EVERY_12_HOURS"),
+                        NSLocalizedString("DAILY"),
+                        NSLocalizedString("EVERY_2_DAYS"),
+                        NSLocalizedString("WEEKLY")
+                    ]
+                ))
+            ),
+            .init(
+                key: "Library.skipTitles",
+                title: NSLocalizedString("SKIP_TITLES"),
+                value: .multiselect(.init(
+                    values: ["hasUnread", "completed", "notStarted"],
+                    titles: [
+                        NSLocalizedString("WITH_UNREAD_CHAPTERS"),
+                        NSLocalizedString("WITH_COMPLETED_STATUS"),
+                        NSLocalizedString("THAT_HAVENT_BEEN_READ")
+                    ]
+                ))
+            ),
+            .init(
+                key: "Library.excludedUpdateCategories",
+                title: NSLocalizedString("EXCLUDED_CATEGORIES"),
+                value: .custom
+            ),
+            .init(
+                key: "Library.updateOnlyOnWifi",
+                title: NSLocalizedString("ONLY_UPDATE_ON_WIFI"),
+                value: .toggle(.init())
+            ),
+            .init(
+                key: "Library.refreshMetadata",
+                title: NSLocalizedString("REFRESH_METADATA"),
+                value: .toggle(.init())
+            )
+        ]
+        if #available(iOS 26.0, *) {
+            return .init(
+                title: NSLocalizedString("LIBRARY_UPDATING"),
+                value: .group(.init(
+                    footer: NSLocalizedString("BACKGROUND_REFRESH_TEXT"),
+                    items: baseItems + [
+                        .init(
+                            key: "Library.backgroundRefresh",
+                            title: NSLocalizedString("BACKGROUND_REFRESH"),
+                            value: .toggle(.init())
+                        )
+                    ]
+                ))
+            )
+        } else {
+            return .init(
+                title: NSLocalizedString("LIBRARY_UPDATING"),
+                value: .group(.init(
+                    items: baseItems
+                ))
+            )
+        }
+    }()
 
     private static let readerSettings: [Setting] = [
         .init(value: .group(.init(items: [
@@ -320,9 +341,10 @@ extension Settings {
                 key: "Reader.backgroundColor",
                 title: NSLocalizedString("READER_BG_COLOR"),
                 value: .select(.init(
-                    values: ["system", "white", "black"],
+                    values: ["system", "auto", "white", "black"],
                     titles: [
                         NSLocalizedString("READER_BG_COLOR_SYSTEM"),
+                        NSLocalizedString("READER_BG_COLOR_AUTO"),
                         NSLocalizedString("READER_BG_COLOR_WHITE"),
                         NSLocalizedString("READER_BG_COLOR_BLACK")
                     ]
@@ -419,6 +441,19 @@ extension Settings {
                     key: "Reader.pagedIsolateFirstPage",
                     title: NSLocalizedString("ISOLATE_FIRST_PAGE"),
                     notification: .init("Reader.pagedIsolateFirstPage"),
+                    value: .toggle(.init())
+                ),
+                .init(
+                    key: "Reader.splitWideImages",
+                    title: NSLocalizedString("SPLIT_WIDE_IMAGES"),
+                    notification: .init("Reader.splitWideImages"),
+                    value: .toggle(.init())
+                ),
+                .init(
+                    key: "Reader.reverseSplitOrder",
+                    title: NSLocalizedString("REVERSE_SPLIT_ORDER"),
+                    notification: .init("Reader.reverseSplitOrder"),
+                    requires: "Reader.splitWideImages",
                     value: .toggle(.init())
                 )
             ]))
@@ -530,4 +565,37 @@ extension Settings {
             ]))
         )
     ]
+}
+
+extension Settings {
+    static let downloadSettings: [Setting] = {
+        let baseItems: [Setting] = [
+            .init(
+                key: "Library.downloadOnlyOnWifi",
+                title: NSLocalizedString("ONLY_DOWNLOAD_ON_WIFI"),
+                value: .toggle(.init())
+            ),
+            .init(
+                key: "Library.deleteDownloadAfterReading",
+                title: NSLocalizedString("DELETE_DOWNLOAD_AFTER_READING"),
+                value: .toggle(.init())
+            ),
+            .init(
+                key: "Downloads.compress",
+                title: NSLocalizedString("COMPRESS_DOWNLOADS"),
+                value: .toggle(.init())
+            )
+        ]
+        if #available(iOS 26.0, *) {
+            return baseItems + [
+                .init(
+                    key: "Downloads.background",
+                    title: NSLocalizedString("BACKGROUND_DOWNLOADING"),
+                    value: .toggle(.init())
+                )
+            ]
+        } else {
+            return baseItems
+        }
+    }()
 }

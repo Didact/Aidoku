@@ -77,7 +77,6 @@ struct ChapterListHeaderView: View {
             }
             Text(text)
                 .font(.headline)
-                .padding(.vertical, 10)
                 .transition(.scale) // for some reason this makes it animate correctly
                 .id("chapters")
 
@@ -176,6 +175,7 @@ struct ChapterListHeaderView: View {
                     }
                 }
             }
+            .menuActionDismissDisabled()
             Section(NSLocalizedString("TITLE_DISPLAY_MODE")) {
                 ForEach(ChapterTitleDisplayMode.allCases, id: \.rawValue) { mode in
                     Button {

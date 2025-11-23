@@ -9,7 +9,6 @@
 "LIBRARY" = "ライブラリ";
 "LIBRARY_SEARCH" = "ライブラリ検索";
 "LIBRARY_EMPTY" = "ライブラリの中には本がありません";
-"LIBRARY_ADD_FROM_BROWSE" = "ブラウズから漫画を追加";
 "BROWSE" = "ブラウズ";
 "INSTALLED" = "インストール済のソース";
 "VERSION" = "バージョン";
@@ -85,7 +84,6 @@
 "DEFAULT_CATEGORY" = "デフォルトの本棚";
 "ALWAYS_ASK" = "常に尋ねる";
 "BROWSE_NO_SOURCES" = "ソースなし";
-"BROWSE_NO_SOURCES_TEXT" = "開始するには、ソースリストを設定するか、\nAidokuでソースを開いてください";
 "ADDING_SOURCES_GUIDE_BUTTON" = "ソース追加ガイド";
 "UPDATES" = "更新";
 "EXTERNAL" = "外部ソース";
@@ -196,7 +194,6 @@
 "EVERY_12_HOURS" = "12時間ごと";
 "EVERY_2_DAYS" = "2日ごと";
 "SOURCE_LIST_URL" = "ソースリスト URL";
-"SHOW_NSFW_SOURCES" = "NSFW ソースを表示";
 "SOURCE_LIST_ADDED_TEXT" = "ブラウザタブで外部ソースを参照できるようになりました。";
 "SOURCE_LIST_ADD" = "ソースリスト追加";
 "SOURCE_LIST_ADD_TEXT" = "ソースリストのURLを入力";
@@ -223,7 +220,7 @@
 "LOCKED_CATEGORIES" = "ロックされた本棚";
 "LIBRARY_LOCKED" = "ライブラリはロックされています。";
 "CATEGORY_LOCKED" = "本棚はロックされています。";
-"TRACKING" = "追跡";
+"IS_TRACKING" = "追跡";
 "SET_AS_WIDE_PAGE" = "ワイドページにする";
 "AUTOMATIC" = "自動";
 "SET_AS_NORMAL_PAGE" = "通常ページにする";
@@ -370,9 +367,8 @@
 "UNKNOWN_ERROR" = "不明なエラー";
 "ADD_SOURCE" = "ソースを追加する";
 "IMPORT_SOURCE" = "ソースをインポートする";
-"LOCAL_SOURCE" = "ローカルソース";
-"LOCAL_SOURCE_INFO" = "ローカルソースを使って愛読から直接ライブラリーをアップロードして管理することができます。";
-"LOCAL_SOURCE_SETUP" = "ローカルソースの設定";
+"LOCAL_FILES_INFO" = "ローカルファイルのソースを使って愛読から直接ライブラリーをアップロードして管理することができます。";
+"LOCAL_FILES_SETUP" = "ローカルファイルの設定";
 "LOCAL_FILES" = "ローカルファイル";
 "LOCAL_FILES_TAGLINE" = "ローカルファイルから読む";
 "IMPORT" = "インポート";

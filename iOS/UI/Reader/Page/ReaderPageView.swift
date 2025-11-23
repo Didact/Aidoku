@@ -114,24 +114,24 @@ class ReaderPageView: UIView {
 
         if let imageTask {
             switch imageTask.state {
-            case .running:
-                if completion != nil {
-                    completion!(imageView.image != nil)
-                }
-                return await withCheckedContinuation({ continuation in
-                    self.completion = { success in
-                        self.completion = nil
-                        continuation.resume(returning: success)
+                case .running:
+                    if completion != nil {
+                        completion!(imageView.image != nil)
                     }
-                })
-            case .completed:
-                if imageView.image == nil {
+                    return await withCheckedContinuation({ continuation in
+                        self.completion = { success in
+                            self.completion = nil
+                            continuation.resume(returning: success)
+                        }
+                    })
+                case .completed:
+                    if imageView.image == nil {
+                        request = imageTask.request
+                    } else {
+                        return true
+                    }
+                case .cancelled:
                     request = imageTask.request
-                } else {
-                    return true
-                }
-            case .cancelled:
-                request = imageTask.request
             }
         } else {
             let urlRequest = if let sourceId, let source = SourceManager.shared.source(for: sourceId) {
@@ -141,6 +141,7 @@ class ReaderPageView: UIView {
             }
 
             var processors: [ImageProcessing] = []
+            var usePageProcessor = false
             if
                 let sourceId,
                 let newSource = SourceManager.shared.source(for: sourceId)
@@ -148,6 +149,7 @@ class ReaderPageView: UIView {
                 // only process pages if the source supports it and the image isn't downloaded
                 if newSource.features.processesPages, !url.isFileURL {
                     processors.append(PageInterceptorProcessor(source: newSource))
+                    usePageProcessor = true
                 }
             }
             if UserDefaults.standard.bool(forKey: "Reader.cropBorders") {
@@ -162,7 +164,7 @@ class ReaderPageView: UIView {
             request = ImageRequest(
                 urlRequest: urlRequest,
                 processors: processors,
-                userInfo: [.contextKey: context ?? [:], .processesKey: true]
+                userInfo: [.contextKey: context ?? [:], .processesKey: usePageProcessor]
             )
         }
 
@@ -205,28 +207,30 @@ class ReaderPageView: UIView {
             return true
         } catch {
             let error = error as? ImagePipeline.Error
-            switch error {
-                case .dataLoadingFailed, .dataIsEmpty:
-                    // we can still send to image processor even if the request failed
-                    if request.userInfo[.processesKey] as? Bool == true {
-                        let processor = request.processors.first(where: { $0 is PageInterceptorProcessor }) as? PageInterceptorProcessor
-                        if let processor {
-                            let result = await Task.detached {
+
+            // we can still send to image processor even if the request failed
+            if request.userInfo[.processesKey] as? Bool == true {
+                let processor = request.processors.first(where: { $0 is PageInterceptorProcessor }) as? PageInterceptorProcessor
+                if let processor {
+                    let result: Nuke.ImageContainer?
+                    switch error {
+                        case .dataLoadingFailed, .dataIsEmpty, .decodingFailed:
+                            result = await Task.detached {
                                 try? processor.processWithoutImage(request: request)
                             }.value
-                            if let result {
-                                imageView.image = result.image
-                                if result.type == .gif, let data = result.data {
-                                    imageView.animate(withGIFData: data)
-                                }
-                                fixImageSize()
-                                completion?(true)
-                                return true
-                            }
-                        }
+                        default:
+                            result = nil
                     }
-                default:
-                    break
+                    if let result {
+                        imageView.image = result.image
+                        if result.type == .gif, let data = result.data {
+                            imageView.animate(withGIFData: data)
+                        }
+                        fixImageSize()
+                        completion?(true)
+                        return true
+                    }
+                }
             }
             completion?(false)
             return false
@@ -295,13 +299,6 @@ class ReaderPageView: UIView {
     }
 
     func setPageImage(zipURL: URL, filePath: String) async -> Bool {
-        // remove text view if it exists
-        if let textView {
-            textView.view.removeFromSuperview()
-            textView.didMove(toParent: nil)
-            self.textView = nil
-        }
-
         var hasher = Hasher()
         hasher.combine(zipURL)
         hasher.combine(filePath)
@@ -323,52 +320,71 @@ class ReaderPageView: UIView {
             return true
         }
 
-        let image: UIImage? = await Task.detached {
+        let result: (data: Data, isText: Bool)? = await Task.detached {
             do {
-                var imageData = Data()
-                let archive: Archive
-                archive = try Archive(url: zipURL, accessMode: .read)
-                guard let entry = archive[filePath]
-                else {
+                var data = Data()
+                let archive = try Archive(url: zipURL, accessMode: .read)
+                guard let entry = archive[filePath] else {
                     return nil
                 }
                 _ = try archive.extract(
                     entry,
-                    consumer: { data in
-                        imageData.append(data)
+                    consumer: { readData in
+                        data.append(readData)
                     }
                 )
-                guard var image = UIImage(data: imageData) else {
-                    return nil
-                }
-
-                if UserDefaults.standard.bool(forKey: "Reader.cropBorders") {
-                    let processor = CropBordersProcessor()
-                    if let processedImage = processor.process(image) {
-                        image = processedImage
-                    }
-                }
-                if UserDefaults.standard.bool(forKey: "Reader.downsampleImages") {
-                    let processor = await DownsampleProcessor(width: UIScreen.main.bounds.width)
-                    if let processedImage = processor.process(image) {
-                        image = processedImage
-                    }
-                } else if UserDefaults.standard.bool(forKey: "Reader.upscaleImages") {
-                    let processor = UpscaleProcessor()
-                    if let processedImage = processor.process(image) {
-                        image = processedImage
-                    }
-                }
-
-                return image
+                return (data, entry.path.hasSuffix(".txt"))
             } catch {
                 return nil
             }
+        }.value
+
+        guard let result else { return false }
+
+        if result.isText, let text = String(data: result.data, encoding: .utf8) {
+            setPageText(text: text)
+            return true
+        }
+
+        // remove text view if it exists
+        if let textView {
+            textView.view.removeFromSuperview()
+            textView.didMove(toParent: nil)
+            self.textView = nil
+        }
+
+        let image: UIImage? = await Task.detached {
+            guard var image = UIImage(data: result.data) else {
+                return nil
+            }
+
+            if UserDefaults.standard.bool(forKey: "Reader.cropBorders") {
+                let processor = CropBordersProcessor()
+                if let processedImage = processor.process(image) {
+                    image = processedImage
+                }
+            }
+            if UserDefaults.standard.bool(forKey: "Reader.downsampleImages") {
+                let processor = await DownsampleProcessor(width: UIScreen.main.bounds.width)
+                if let processedImage = processor.process(image) {
+                    image = processedImage
+                }
+            } else if UserDefaults.standard.bool(forKey: "Reader.upscaleImages") {
+                let processor = UpscaleProcessor()
+                if let processedImage = processor.process(image) {
+                    image = processedImage
+                }
+            }
+
+            return image
         }.value
         guard let image else { return false }
 
         ImagePipeline.shared.cache.storeCachedImage(ImageContainer(image: image), for: request)
         imageView.image = image
+        if filePath.pathExtension().lowercased() == "gif" {
+            imageView.animate(withGIFData: result.data)
+        }
         fixImageSize()
 
         return true
@@ -485,5 +501,36 @@ class ReaderPageView: UIView {
             let request = ImageRequest(id: key, data: { Data() })
             ImagePipeline.shared.cache.removeCachedImage(for: request)
         }
+    }
+
+    /// Splits the current image into left and right halves
+    func splitImage() -> (left: UIImage?, right: UIImage?) {
+        guard let image = imageView.image else { return (nil, nil) }
+
+        let imageSize = image.size
+        let imageScale = image.scale
+
+        // Calculate the split point (middle of the image)
+        let splitX = imageSize.width / 2
+
+        // Create left half rect
+        let leftRect = CGRect(x: 0, y: 0, width: splitX, height: imageSize.height)
+
+        // Create right half rect
+        let rightRect = CGRect(x: splitX, y: 0, width: splitX, height: imageSize.height)
+
+        // Extract left half
+        guard let leftCGImage = image.cgImage?.cropping(to: leftRect) else {
+            return (nil, nil)
+        }
+        let leftImage = UIImage(cgImage: leftCGImage, scale: imageScale, orientation: image.imageOrientation)
+
+        // Extract right half
+        guard let rightCGImage = image.cgImage?.cropping(to: rightRect) else {
+            return (nil, nil)
+        }
+        let rightImage = UIImage(cgImage: rightCGImage, scale: imageScale, orientation: image.imageOrientation)
+
+        return (leftImage, rightImage)
     }
 }

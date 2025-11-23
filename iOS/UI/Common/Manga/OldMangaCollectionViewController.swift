@@ -1,5 +1,5 @@
 //
-//  MangaCollectionViewController.swift
+//  OldMangaCollectionViewController.swift
 //  Aidoku (iOS)
 //
 //  Created by Skitty on 8/1/22.
@@ -7,11 +7,13 @@
 
 import UIKit
 
-class MangaCollectionViewController: BaseCollectionViewController {
+class OldMangaCollectionViewController: BaseCollectionViewController {
+    static let itemSpacing: CGFloat = 12
+    static let sectionSpacing: CGFloat = 6 // extra spacing betweeen sections
+
+    var usesListLayout = false
 
     lazy var dataSource = makeDataSource()
-
-    var itemSpacing: CGFloat = 12
 
     private var focusedIndexPath: IndexPath? {
         didSet {
@@ -26,6 +28,8 @@ class MangaCollectionViewController: BaseCollectionViewController {
 
     override func configure() {
         super.configure()
+        collectionView.register(MangaGridCell.self, forCellWithReuseIdentifier: "MangaGridCell")
+        collectionView.register(MangaListCell.self, forCellWithReuseIdentifier: "MangaListCell")
         collectionView.dataSource = dataSource
         collectionView.contentInset = UIEdgeInsets(
             top: 0,
@@ -37,51 +41,84 @@ class MangaCollectionViewController: BaseCollectionViewController {
 
     override func observe() {
         addObserver(forName: "General.portraitRows") { [weak self] _ in
-            self?.collectionView.collectionViewLayout.invalidateLayout()
+            Task { @MainActor in
+                self?.collectionView.collectionViewLayout.invalidateLayout()
+            }
         }
         addObserver(forName: "General.landscapeRows") { [weak self] _ in
-            self?.collectionView.collectionViewLayout.invalidateLayout()
+            Task { @MainActor in
+                self?.collectionView.collectionViewLayout.invalidateLayout()
+            }
         }
     }
 
     // MARK: Cell Registration
-    typealias CellRegistration = UICollectionView.CellRegistration<MangaGridCell, MangaInfo>
+    func configure(cell: MangaGridCell, info: MangaInfo) {
+        cell.sourceId = info.sourceId
+        cell.mangaId = info.mangaId
+        cell.title = info.title
 
-    func makeCellRegistration() -> CellRegistration {
-        CellRegistration { cell, _, info in
-            cell.sourceId = info.sourceId
-            cell.mangaId = info.mangaId
-            cell.title = info.title
-            Task {
-                await cell.loadImage(url: info.coverUrl)
-            }
+        Task {
+            await cell.loadImage(url: info.coverUrl)
         }
+
+        cell.setSelected(cell.isSelected, animated: false)
+    }
+
+    func configure(cell: MangaListCell, info: MangaInfo) {
+        cell.configure(with: info)
+        cell.setSelected(cell.isSelected, animated: false)
     }
 
     // MARK: Collection View Layout
     override func makeCollectionViewLayout() -> UICollectionViewLayout {
         let layout = UICollectionViewCompositionalLayout { [weak self] sectionIndex, environment in
+            guard let self else { return nil }
             switch Section(rawValue: sectionIndex) {
-            case .pinned, .regular:
-                return self?.makeGridLayoutSection(environment: environment)
-            case nil:
-                return nil
+                case .pinned, .regular:
+                    if self.usesListLayout {
+                        return Self.makeListLayoutSection(environment: environment)
+                    } else {
+                        return Self.makeGridLayoutSection(environment: environment)
+                    }
+                case nil:
+                    return nil
             }
         }
         let config = UICollectionViewCompositionalLayoutConfiguration()
-        config.interSectionSpacing = itemSpacing
+        config.interSectionSpacing = Self.itemSpacing + Self.sectionSpacing
         layout.configuration = config
         return layout
     }
 }
 
-extension MangaCollectionViewController {
+extension OldMangaCollectionViewController {
+    static func makeListLayoutSection(environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
+        let itemHeight: CGFloat = 100
+        let spacing: CGFloat = 10
 
-    // TODO: list layout
-//    func makeListLayoutSection(environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
-//    }
+        let item = NSCollectionLayoutItem(layoutSize: NSCollectionLayoutSize(
+            widthDimension: .fractionalWidth(1),
+            heightDimension: .absolute(itemHeight)
+        ))
 
-    func makeGridLayoutSection(environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
+        let group = NSCollectionLayoutGroup.vertical(
+            layoutSize: NSCollectionLayoutSize(
+                widthDimension: .fractionalWidth(1),
+                heightDimension: .absolute(itemHeight)
+            ),
+            subitems: [item]
+        )
+        group.interItemSpacing = .fixed(spacing)
+
+        let section = NSCollectionLayoutSection(group: group)
+        section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+        section.interGroupSpacing = spacing
+
+        return section
+    }
+
+    static func makeGridLayoutSection(environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
         let itemsPerRow = UserDefaults.standard.integer(
             forKey: environment.container.contentSize.width > environment.container.contentSize.height
                 ? "General.landscapeRows"
@@ -101,7 +138,6 @@ extension MangaCollectionViewController {
             subitem: item,
             count: itemsPerRow
         )
-
         group.interItemSpacing = .fixed(itemSpacing)
 
         let section = NSCollectionLayoutSection(group: group)
@@ -113,30 +149,95 @@ extension MangaCollectionViewController {
 }
 
 // MARK: - Collection View Delegate
-extension MangaCollectionViewController {
-
+extension OldMangaCollectionViewController {
     func collectionView(_ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath) {
-        if let cell = collectionView.cellForItem(at: indexPath) as? MangaGridCell {
+        let cell = collectionView.cellForItem(at: indexPath)
+        if let cell = cell as? MangaGridCell {
+            cell.highlight()
+        } else if let cell = cell as? MangaListCell {
             cell.highlight()
         }
     }
 
     func collectionView(_ collectionView: UICollectionView, didUnhighlightItemAt indexPath: IndexPath) {
-        if let cell = collectionView.cellForItem(at: indexPath) as? MangaGridCell {
-            cell.unhighlight(animated: true)
+        let cell = collectionView.cellForItem(at: indexPath)
+        if let cell = cell as? MangaGridCell {
+            cell.unhighlight()
+        } else if let cell = cell as? MangaListCell {
+            cell.unhighlight()
         }
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard let info = dataSource.itemIdentifier(for: indexPath) else { return }
-        let vc = MangaViewController(manga: info.toManga().toNew(), parent: self)
-        navigationController?.pushViewController(vc, animated: true)
+        openInfoView(info: info)
+    }
+
+    func openInfoView(info: MangaInfo, zoom: Bool = true) {
+        let viewController = MangaViewController(manga: info, parent: self)
+        if zoom, #available(iOS 18.0, *) {
+            viewController.preferredTransition = .zoom { context in
+                guard
+                    let detailViewController = context.zoomedViewController as? MangaViewController,
+                    let info = detailViewController.mangaInfo,
+                    let indexPath = self.dataSource.indexPath(for: info),
+                    let cell = self.collectionView.cellForItem(at: indexPath)
+                else {
+                    return nil
+                }
+                if let cell = cell as? MangaListCell {
+                    return cell.coverImageView
+                } else {
+                    return cell.contentView
+                }
+            }
+        }
+        navigationController?.pushViewController(viewController, animated: true)
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        contextMenuConfiguration configuration: UIContextMenuConfiguration,
+        highlightPreviewForItemAt indexPath: IndexPath
+    ) -> UITargetedPreview? {
+        guard let cell = collectionView.cellForItem(at: indexPath) else { return nil }
+
+        if cell is MangaListCell {
+            // add some padding to list cell
+            let parameters = UIPreviewParameters()
+            let padding: CGFloat = 8
+            let rect = cell.bounds.insetBy(dx: -padding, dy: -padding)
+            parameters.visiblePath = UIBezierPath(roundedRect: rect, cornerRadius: 12)
+
+            return UITargetedPreview(view: cell.contentView, parameters: parameters)
+        } else if cell is MangaGridCell {
+            // round the grid cell corners correctly
+            let parameters = UIPreviewParameters()
+            parameters.visiblePath = UIBezierPath(
+                roundedRect: cell.bounds,
+                cornerRadius: cell.contentView.layer.cornerRadius
+            )
+            return UITargetedPreview(view: cell.contentView, parameters: parameters)
+        } else {
+            return nil
+        }
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        contextMenuConfiguration configuration: UIContextMenuConfiguration,
+        dismissalPreviewForItemAt indexPath: IndexPath
+    ) -> UITargetedPreview? {
+        self.collectionView(
+            collectionView,
+            contextMenuConfiguration: configuration,
+            highlightPreviewForItemAt: indexPath
+        )
     }
 }
 
 // MARK: - Data Source
-extension MangaCollectionViewController {
-
+extension OldMangaCollectionViewController {
     enum Section: Int, CaseIterable {
         case pinned
         case regular
@@ -144,14 +245,31 @@ extension MangaCollectionViewController {
 
     func makeDataSource() -> UICollectionViewDiffableDataSource<Section, MangaInfo> {
         UICollectionViewDiffableDataSource(
-            collectionView: collectionView,
-            cellProvider: makeCellRegistration().cellProvider
-        )
+            collectionView: collectionView
+        ) { [weak self] collectionView, indexPath, item in
+            // swiftlint:disable force_cast
+            if self?.usesListLayout ?? false {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: "MangaListCell",
+                    for: indexPath
+                ) as! MangaListCell
+                self?.configure(cell: cell, info: item)
+                return cell
+            } else {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: "MangaGridCell",
+                    for: indexPath
+                ) as! MangaGridCell
+                self?.configure(cell: cell, info: item)
+                return cell
+            }
+            // swiftlint:enable force_cast
+        }
     }
 }
 
 // MARK: - Keyboard Shortcuts
-extension MangaCollectionViewController {
+extension OldMangaCollectionViewController {
     override var canBecomeFirstResponder: Bool { true }
 
     override var keyCommands: [UIKeyCommand]? {

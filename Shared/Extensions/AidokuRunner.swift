@@ -43,10 +43,23 @@ extension InterpreterConfiguration {
 
                     return (data, response)
                 } catch {
+                    LogManager.logger.error("Error performing network request for \(sourceId): \(error)")
                     throw error
                 }
             }
         )
+    }
+}
+
+private final class URLSessionUnsecureDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        if let trust = challenge.protectionSpace.serverTrust {
+            return (.useCredential, URLCredential(trust: trust))
+        }
+        return (.performDefaultHandling, nil)
     }
 }
 
@@ -103,6 +116,35 @@ extension AidokuRunner.Source {
         }
         return request
     }
+
+    /// Attempt to get a custom Home-like layout for listings.
+    /// Returns nil if source doesn't provide custom Home-like layout.
+    /// For now, only used internally by KomgaSourceRunner
+    func getListingHome(listing: AidokuRunner.Listing) async throws -> Home? {
+        if let runner = runner as? KomgaSourceRunner {
+            try await runner.getListingHome(listing: listing)
+        } else {
+            nil
+        }
+    }
+
+    func getSelectedLanguages() -> [String] {
+        if languages.count > 1 {
+            if config?.languageSelectType == .single {
+                let selectedLanguage = UserDefaults.standard.string(forKey: "\(key).language")
+                if let selectedLanguage {
+                    return [selectedLanguage]
+                } else {
+                    return []
+                }
+            } else {
+                let selectedLanguages = UserDefaults.standard.stringArray(forKey: "\(key).languages")
+                return selectedLanguages ?? []
+            }
+        } else {
+            return languages
+        }
+    }
 }
 
 extension AidokuRunner.Manga {
@@ -155,9 +197,13 @@ extension AidokuRunner.Manga {
     var uniqueKey: String {
         "\(sourceKey).\(key)"
     }
+
+    var identifier: MangaIdentifier {
+        .init(sourceKey: sourceKey, mangaKey: key)
+    }
 }
 
-extension AidokuRunner.MangaStatus {
+extension AidokuRunner.PublishingStatus {
     var title: String {
         switch self {
             case .unknown: NSLocalizedString("UNKNOWN")
@@ -169,13 +215,40 @@ extension AidokuRunner.MangaStatus {
     }
 }
 
-extension AidokuRunner.MangaContentRating {
+extension AidokuRunner.ContentRating {
     var title: String {
         switch self {
             case .unknown: NSLocalizedString("UNKNOWN")
             case .safe: NSLocalizedString("SAFE")
             case .suggestive: NSLocalizedString("SUGGESTIVE")
             case .nsfw: NSLocalizedString("NSFW")
+        }
+    }
+}
+
+extension AidokuRunner.SourceContentRating {
+    var title: String {
+        switch self {
+            case .safe: NSLocalizedString("SAFE")
+            case .containsNsfw: NSLocalizedString("CONTAINS_NSFW")
+            case .primarilyNsfw: NSLocalizedString("PRIMARILY_NSFW")
+        }
+    }
+
+    var stringValue: String {
+        switch self {
+            case .safe: "safe"
+            case .containsNsfw: "containsNsfw"
+            case .primarilyNsfw: "primarilyNsfw"
+        }
+    }
+
+    init?(stringValue: String) {
+        switch stringValue {
+            case "safe": self = .safe
+            case "containsNsfw": self = .containsNsfw
+            case "primarilyNsfw": self = .primarilyNsfw
+            default: return nil
         }
     }
 }

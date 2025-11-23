@@ -14,6 +14,10 @@ class TrackerManager {
     /// The shared tracker mangaer instance.
     static let shared = TrackerManager()
 
+    /// An instance of the Komga tracker.
+    let komga = KomgaTracker()
+    /// An instance of the Komga tracker.
+    let kavita = KavitaTracker()
     /// An instance of the AniList tracker.
     let anilist = AniListTracker()
     /// An instance of the MyAnimeList tracker.
@@ -22,11 +26,9 @@ class TrackerManager {
     let shikimori = ShikimoriTracker()
     /// An instance of the Bangumi tracker.
     let bangumi = BangumiTracker()
-    /// An instance of the Komga tracker.
-    let komga = KomgaTracker()
 
     /// An array of the available trackers.
-    lazy var trackers: [Tracker] = [anilist, myanimelist, shikimori, bangumi, komga]
+    lazy var trackers: [Tracker] = [komga, kavita, anilist, myanimelist, shikimori, bangumi]
 
     /// A boolean indicating if there is a tracker that is currently logged in.
     var hasAvailableTrackers: Bool {
@@ -39,7 +41,7 @@ class TrackerManager {
     }
 
     /// Send chapter read update to logged in trackers.
-    func setCompleted(chapter: Chapter) async {
+    func setCompleted(chapter: Chapter, skipTracker: Tracker? = nil) async {
         let chapterNum = chapter.chapterNum
         let volumeNum = chapter.volumeNum.flatMap { Int(floor($0)) }
         guard chapterNum != nil || volumeNum != nil else { return }
@@ -58,7 +60,9 @@ class TrackerManager {
 
         for item in trackItems {
             guard
+                skipTracker?.id != item.trackerId,
                 let tracker = getTracker(id: item.trackerId),
+                !(tracker is PageTracker),
                 let state = try? await tracker.getState(trackId: item.id)
             else { continue }
 
@@ -150,6 +154,32 @@ class TrackerManager {
         }
     }
 
+    /// Set the page progress for trackers that support it.
+    func setProgress(sourceKey: String, mangaKey: String, chapter: AidokuRunner.Chapter, progress: ChapterReadProgress) async {
+        await setProgress(sourceKey: sourceKey, mangaKey: mangaKey, chapters: [chapter], progress: progress)
+    }
+
+    func setProgress(sourceKey: String, mangaKey: String, chapters: [AidokuRunner.Chapter], progress: ChapterReadProgress) async {
+        let trackItems: [TrackItem] = await CoreDataManager.shared.container.performBackgroundTask { context in
+            CoreDataManager.shared.getTracks(
+                sourceId: sourceKey,
+                mangaId: mangaKey,
+                context: context
+            ).map { $0.toItem() }
+        }
+
+        for item in trackItems {
+            guard let tracker = getTracker(id: item.trackerId) as? PageTracker else { continue }
+            do {
+                for chapter in chapters {
+                    try await tracker.setProgress(trackId: item.id, chapter: chapter, progress: progress)
+                }
+            } catch {
+                LogManager.logger.error("Failed to set tracker progress (\(tracker.id)): \(error)")
+            }
+        }
+    }
+
     /// Register a new track item to a manga and save to the data store.
     func register(tracker: Tracker, manga: AidokuRunner.Manga, item: TrackSearchItem) async {
         let (highestReadNumber, earliestReadDate) = await CoreDataManager.shared.container.performBackgroundTask { context in
@@ -181,8 +211,12 @@ class TrackerManager {
             ))
 
             // Sync progress from tracker if enabled or is enhanced tracker
-            if UserDefaults.standard.bool(forKey: "Tracking.autoSyncFromTracker") || (tracker is EnhancedTracker) {
-                await syncProgressFromTracker(tracker: tracker, trackId: id ?? item.id, manga: manga)
+            if UserDefaults.standard.bool(forKey: "Tracking.autoSyncFromTracker") || (tracker is EnhancedTracker) || (tracker is PageTracker) {
+                if tracker is PageTracker {
+                    await syncPageTrackerHistory(manga: manga)
+                } else {
+                    await syncProgressFromTracker(tracker: tracker, trackId: id ?? item.id, manga: manga)
+                }
             }
         } catch {
             LogManager.logger.error("Failed to register tracker \(tracker.id): \(error)")
@@ -232,7 +266,8 @@ class TrackerManager {
         NotificationCenter.default.post(name: Notification.Name("updateTrackers"), object: nil)
     }
 
-    /// Checks if a manga is being tracked.
+    /// Checks if a manga is being tracked
+    @MainActor
     func isTracking(sourceId: String, mangaId: String) -> Bool {
         CoreDataManager.shared.hasTrack(sourceId: sourceId, mangaId: mangaId)
     }
@@ -243,80 +278,167 @@ class TrackerManager {
     }
 
     /// Sync progress from tracker to local history.
-    func syncProgressFromTracker(tracker: Tracker, trackId: String, manga: AidokuRunner.Manga) async {
-        guard
-            let state = try? await tracker.getState(trackId: trackId),
-            let trackerLastReadChapter = state.lastReadChapter,
-            let trackerLastReadVolume = state.lastReadVolume,
-            trackerLastReadChapter > 0 || trackerLastReadVolume > 0
-        else {
-            return
-        }
-
-        // fetch chapters from db or source
-        let inLibrary = await CoreDataManager.shared.container.performBackgroundTask { context in
-            CoreDataManager.shared.hasLibraryManga(sourceId: manga.sourceKey, mangaId: manga.key, context: context)
-        }
-        let chapters = if inLibrary {
-            // load data from db
-            await CoreDataManager.shared.container.performBackgroundTask { context in
-                CoreDataManager.shared.getChapters(
-                    sourceId: manga.sourceKey,
-                    mangaId: manga.key,
-                    context: context
-                ).map {
-                    $0.toNewChapter()
-                }
-            }
-        } else {
-            (try? await SourceManager.shared.source(for: manga.sourceKey)?.getMangaUpdate(
-                manga: manga,
-                needsDetails: false,
-                needsChapters: true
-            ).chapters) ?? []
-        }
-        guard !chapters.isEmpty else { return }
-
-        let currentHighestRead = await CoreDataManager.shared.container.performBackgroundTask { context in
-            CoreDataManager.shared.getHighestReadNumber(
-                sourceId: manga.sourceKey,
-                mangaId: manga.key,
-                context: context
-            ) ?? 0
-        }
-
-        // Check for display mode
-        let key = "Manga.chapterDisplayMode.\(manga.uniqueKey)"
-        let displayMode = ChapterTitleDisplayMode(rawValue: UserDefaults.standard.integer(forKey: key)) ?? .default
-
-        var chaptersToMark: [AidokuRunner.Chapter] = []
-
-        // Determine what to sync based on tracker progress and forced mode
-        if displayMode == .chapter {
-            // Forced chapter mode: sync chapter progress
-            if trackerLastReadChapter > currentHighestRead {
-                chaptersToMark = chapters.filter { ($0.chapterNumber ?? $0.volumeNumber ?? 0) <= trackerLastReadChapter }
-            }
-        } else if displayMode == .volume {
-            // Forced volume mode: sync volume progress
-            if trackerLastReadVolume > 0 && Float(trackerLastReadVolume) > currentHighestRead {
-                chaptersToMark = chapters.filter { ($0.volumeNumber ?? $0.chapterNumber ?? 0) <= Float(trackerLastReadVolume) }
-            }
-        } else {
-            // Default mode: sync both chapter and volume progress
-            if trackerLastReadChapter > currentHighestRead {
-                chaptersToMark = chapters.filter { $0.chapterNumber ?? 0 <= trackerLastReadChapter }
-            }
-            if trackerLastReadVolume > 0 && chaptersToMark.isEmpty {
-                chaptersToMark = chapters.filter { ($0.volumeNumber ?? 0) <= Float(trackerLastReadVolume) }
-            }
-        }
-
+    func syncProgressFromTracker(
+        tracker: Tracker,
+        trackId: String,
+        manga: AidokuRunner.Manga,
+        chapters: [AidokuRunner.Chapter]? = nil
+    ) async {
+        let chaptersToMark = await getChaptersToSyncProgressFromTracker(
+            tracker: tracker,
+            trackId: trackId,
+            manga: manga,
+            chapters: chapters
+        )
         if !chaptersToMark.isEmpty {
             await HistoryManager.shared.addHistory(
                 sourceId: manga.sourceKey,
                 mangaId: manga.key,
-                chapters: chaptersToMark
+                chapters: chaptersToMark,
+                skipTracker: tracker
+            )
+        }
+    }
+
+    /// Sync progress with all linked trackers that support page progress.
+    func syncPageTrackerHistory(manga: AidokuRunner.Manga, chapters: [AidokuRunner.Chapter]? = nil) async {
+        let chapters = if let chapters {
+            chapters
+        } else {
+            await getChapters(manga: manga)
+        }
+        guard !chapters.isEmpty else { return }
+
+        // fetch remote history from linked page trackers
+        var result: [String: ChapterReadProgress] = [:]
+
+        let trackItems: [TrackItem] = await CoreDataManager.shared.container.performBackgroundTask { context in
+            CoreDataManager.shared.getTracks(
+                sourceId: manga.sourceKey,
+                mangaId: manga.key,
+                context: context
+            ).map { $0.toItem() }
+        }
+
+        for item in trackItems {
+            guard let tracker = getTracker(id: item.trackerId) as? PageTracker else { continue }
+            do {
+                let batchProgress = try await tracker.getProgress(trackId: item.id, chapters: chapters)
+                if result.isEmpty {
+                    result = batchProgress
+                } else {
+                    // merge with the existing progress map, keeping newest
+                    for (chapterKey, progress) in batchProgress {
+                        if let existing = result[chapterKey] {
+                            // replace if the new date is higher, otherwise keep existing
+                            if let existingDate = existing.date, let newDate = progress.date {
+                                if newDate > existingDate {
+                                    result[chapterKey] = progress
+                                }
+                            }
+                        } else {
+                            result[chapterKey] = progress
+                        }
+                    }
+                }
+            } catch {
+                LogManager.logger.error("Failed to get tracker progress (\(tracker.id)): \(error)")
+            }
+        }
+
+        guard !result.isEmpty else { return }
+
+        // create local history
+        let (completed, progressed) = await CoreDataManager.shared.container.performBackgroundTask { context in
+            var completed: [String] = []
+            var progressed: [String: Int] = [:]
+
+            var lastRead = Date.distantPast
+
+            for (chapterKey, progress) in result {
+                let existingHistory = CoreDataManager.shared.getHistory(
+                    sourceId: manga.sourceKey,
+                    mangaId: manga.key,
+                    chapterId: chapterKey,
+                    context: context
+                )
+                if let existingDate = existingHistory?.dateRead, let newDate = progress.date, newDate <= existingDate {
+                    // don't update if the existing history is newer than the tracker history
+                    continue
+                }
+                // mark chapters as read
+                if progress.completed {
+                    if !(existingHistory?.completed ?? false) {
+                        completed.append(chapterKey)
+                        let readDate = progress.date ?? Date.now
+                        lastRead = readDate > lastRead ? readDate : lastRead
+                        CoreDataManager.shared.setCompleted(
+                            sourceId: manga.sourceKey,
+                            mangaId: manga.key,
+                            chapterIds: [chapterKey],
+                            date: progress.date ?? Date(),
+                            context: context
+                        )
+                    }
+                } else if progress.page != 0 {
+                    progressed[chapterKey] = progress.page
+                    let readDate = progress.date ?? Date.now
+                    lastRead = readDate > lastRead ? readDate : lastRead
+                    CoreDataManager.shared.setProgress(
+                        progress.page,
+                        sourceId: manga.sourceKey,
+                        mangaId: manga.key,
+                        chapterId: chapterKey,
+                        dateRead: readDate,
+                        completed: false,
+                        context: context
+                    )
+                }
+            }
+
+            // mark manga as read only if history was updated
+            if !completed.isEmpty || !progressed.isEmpty {
+                CoreDataManager.shared.setRead(
+                    sourceId: manga.sourceKey,
+                    mangaId: manga.key,
+                    date: lastRead,
+                    context: context
+                )
+            }
+
+            try? context.save()
+
+            return (completed, progressed)
+        }
+
+        // post notifications to update ui
+        if !completed.isEmpty {
+            NotificationCenter.default.post(
+                name: .historyAdded,
+                object: completed.map {
+                    Chapter(
+                        sourceId: manga.sourceKey,
+                        id: $0,
+                        mangaId: manga.key,
+                        title: "",
+                        sourceOrder: -1
+                    )
+                }
+            )
+        }
+        for (chapterKey, page) in progressed {
+            NotificationCenter.default.post(
+                name: .historySet,
+                object: (
+                    Chapter(
+                        sourceId: manga.sourceKey,
+                        id: chapterKey,
+                        mangaId: manga.key,
+                        title: "",
+                        sourceOrder: -1
+                    ),
+                    page
+                )
             )
         }
     }
@@ -337,5 +459,116 @@ class TrackerManager {
                 }
             }
         }
+    }
+}
+
+extension TrackerManager {
+    private func getChapters(manga: AidokuRunner.Manga) async -> [AidokuRunner.Chapter] {
+        let inLibrary = await CoreDataManager.shared.container.performBackgroundTask { context in
+            CoreDataManager.shared.hasLibraryManga(sourceId: manga.sourceKey, mangaId: manga.key, context: context)
+        }
+        if inLibrary {
+            // load data from db
+            return await CoreDataManager.shared.container.performBackgroundTask { context in
+                CoreDataManager.shared.getChapters(
+                    sourceId: manga.sourceKey,
+                    mangaId: manga.key,
+                    context: context
+                ).map {
+                    $0.toNewChapter()
+                }
+            }
+        } else {
+            return (try? await SourceManager.shared.source(for: manga.sourceKey)?.getMangaUpdate(
+                manga: manga,
+                needsDetails: false,
+                needsChapters: true
+            ).chapters) ?? []
+        }
+    }
+
+    func getChaptersToSyncProgressFromTracker(
+        tracker: Tracker,
+        trackId: String,
+        manga: AidokuRunner.Manga,
+        chapters: [AidokuRunner.Chapter]? = nil,
+        currentHighestRead: Float? = nil
+    ) async -> [AidokuRunner.Chapter] {
+        guard
+            let state = try? await tracker.getState(trackId: trackId),
+            case let trackerLastReadChapter = state.lastReadChapter,
+            case let trackerLastReadVolume = state.lastReadVolume,
+            (trackerLastReadChapter ?? 0) > 0 || (trackerLastReadVolume ?? 0) > 0
+        else {
+            return []
+        }
+
+        let chapters = if let chapters {
+            chapters
+        } else {
+            await getChapters(manga: manga)
+        }
+        guard !chapters.isEmpty else { return [] }
+
+        let currentHighestRead = if let currentHighestRead {
+            currentHighestRead
+        } else {
+            await CoreDataManager.shared.container.performBackgroundTask { context in
+                CoreDataManager.shared.getHighestReadNumber(
+                    sourceId: manga.sourceKey,
+                    mangaId: manga.key,
+                    context: context
+                ) ?? 0
+            }
+        }
+
+        // Check for display mode
+        let key = "Manga.chapterDisplayMode.\(manga.uniqueKey)"
+        let displayMode = ChapterTitleDisplayMode(rawValue: UserDefaults.standard.integer(forKey: key)) ?? .default
+
+        var chaptersToMark: [AidokuRunner.Chapter] = []
+
+        // Determine what to sync based on tracker progress and forced mode
+        if displayMode == .chapter {
+            // Forced chapter mode: sync chapter progress
+            if let trackerLastReadChapter, trackerLastReadChapter > currentHighestRead {
+                chaptersToMark = chapters.filter { ($0.chapterNumber ?? $0.volumeNumber ?? 0) <= trackerLastReadChapter }
+            }
+        } else if displayMode == .volume {
+            // Forced volume mode: sync volume progress
+            if let trackerLastReadVolume, trackerLastReadVolume > 0 && Float(trackerLastReadVolume) > currentHighestRead {
+                chaptersToMark = chapters.filter { ($0.volumeNumber ?? $0.chapterNumber ?? 0) <= Float(trackerLastReadVolume) }
+            }
+        } else {
+            // Default mode: sync both chapter and volume progress
+            var checkedForChapters = false
+            if let trackerLastReadChapter, trackerLastReadChapter > currentHighestRead {
+                // find all chapters with a chapter number less than or equal to the last tracker chapter
+                chaptersToMark = chapters.filter {
+                    // floor the chapter number so partial chapters are marked (e.g. 10.1 and 10.2 will be marked if the tracker is at 10)
+                    if let chapter = $0.chapterNumber, floor(chapter) <= trackerLastReadChapter {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                checkedForChapters = true
+            }
+            // otherwise, if we didn't find any chapters, try using the volume number instead
+            // note: ignores the case where we skipped checking chapters due to currentHighestRead <= trackerLastReadChapter (#753)
+            let foundNoChapters = checkedForChapters && chaptersToMark.isEmpty
+            if let trackerLastReadVolume, trackerLastReadVolume > 0 && (foundNoChapters || trackerLastReadChapter == nil) {
+                // find all chapters with a volume number less than or equal to the last tracker volume
+                chaptersToMark = chapters.filter {
+                    if let volume = $0.volumeNumber, volume <= Float(trackerLastReadVolume) {
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
+
+        return chaptersToMark
     }
 }

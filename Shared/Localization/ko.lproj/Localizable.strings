@@ -16,7 +16,6 @@
 "LIBRARY" = "라이브러리";
 "LIBRARY_SEARCH" = "라이브러리에서 찾기";
 "LIBRARY_EMPTY" = "빈 라이브러리";
-"LIBRARY_ADD_FROM_BROWSE" = "찾아보기 탭에서 만화 추가";
 "ADD_TO_LIBRARY" = "라이브러리에 추가";
 "MANGA_INFO" = "만화 정보";
 "LAST_OPENED" = "최근 확인순";
@@ -51,7 +50,6 @@
 "EDIT_CATEGORIES" = "카테고리 수정";
 "ALWAYS_ASK" = "항상 요청";
 "BROWSE_NO_SOURCES" = "출처 없음";
-"BROWSE_NO_SOURCES_TEXT" = "시작하려면 소스 목록을 구성하거나 \nAidoku에서 소스를 열기";
 "UPDATES" = "업데이트";
 "BUTTON_UPDATE" = "업데이트";
 "BUTTON_GET" = "가져오기";
@@ -223,7 +221,6 @@
 "WITH_UNREAD_CHAPTERS" = "읽지 않은 챕터 포함";
 "THAT_HAVENT_BEEN_READ" = "읽지 않은 것";
 "SOURCE_LISTS" = "소스 목록";
-"SHOW_NSFW_SOURCES" = "성인용 소스 표시";
 "SOURCE_LIST_ADD_FAIL_TEXT" = "제공된 소스 목록 URL이 잘못되었거나 이미 추가되었습니다.";
 "CORRUPTED_BACKUP" = "손상된 백업";
 "RENAME_BACKUP" = "백업 이름 바꾸기";
@@ -314,7 +311,7 @@
 "%i_CHAPTERS" = "%i 장";
 "RENAME_CATEGORY_FAIL_INFO" = "범주 이름은 고유해야 합니다.";
 "ALL_CHAPTERS_READ" = "모든 장 읽기";
-"TRACKING" = "트래킹";
+"IS_TRACKING" = "트래킹";
 "DEFAULT_READING_MODE" = "기본 읽기 모드";
 "PILLARBOX" = "필라박스";
 "PILLARBOX_AMOUNT" = "필라박스 금액";
@@ -360,7 +357,6 @@
 "BASE_URL" = "기본 URL";
 "SEE_ALL" = "모두 표시";
 "%@_EXPERIMENTAL" = "%@ (실험실 기능)";
-"DOWNLOAD_MANAGER" = "내려받기 관리자";
 "NO_DOWNLOADS" = "내려받은 컨텐츠 없음";
 "NO_DOWNLOADS_TEXT" = "내려받은 콘텐츠가 여기에 나타납니다.";
 "DOWNLOADED_CHAPTERS" = "내려받은 챕터";
@@ -398,9 +394,8 @@
 "NO_AVAILABLE_SOURCES_INFO" = "더 많은 외부 소스를 보려면 필터를 조정하세요.";
 "ALL_SOURCES_INSTALLED" = "모든 소스 설치됨";
 "ALL_SOURCES_INSTALLED_INFO" = "모든 소스가 설치되었습니다.";
-"LOCAL_SOURCE" = "로컬 소스";
-"LOCAL_SOURCE_INFO" = "Aidoku 안에서 직접 독서 라이브러리를 업로드하고 로컬 소스를 관리할 수 있습니다.";
-"LOCAL_SOURCE_SETUP" = "로컬 소스 설정";
+"LOCAL_FILES_INFO" = "Aidoku 안에서 직접 독서 라이브러리를 업로드하고 로컬 소스를 관리할 수 있습니다.";
+"LOCAL_FILES_SETUP" = "로컬 소스 설정";
 "LOCAL_FILES" = "로컬 파일";
 "LOCAL_FILES_TAGLINE" = "로컬 파일에서 읽기";
 "IMPORT" = "가져오기";

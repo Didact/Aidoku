@@ -27,7 +27,6 @@
 "REMOVE_DOWNLOAD" = "Rimuovi lo scaricamento";
 "REMOVE_DOWNLOADS" = "Rimuovi gli scaricamenti";
 "REMOVE_ALL_DOWNLOADS" = "Rimuovi tutti gli scaricamenti";
-"LIBRARY_ADD_FROM_BROWSE" = "Aggiungi manga dalla scheda Sfoglia";
 "REMOVE_FROM_LIBRARY" = "Rimuovi dalla Raccolta";
 "ADD_TO_LIBRARY" = "Aggiungi alla Raccolta";
 "MANGA_INFO" = "Informazioni sul manga";
@@ -72,7 +71,6 @@
 "NONE" = "Nessuno";
 "CATEGORIES" = "Categorie";
 "ALWAYS_ASK" = "Chiedi sempre";
-"BROWSE_NO_SOURCES_TEXT" = "Configura l'elenco delle fonti o apri una fonte\nin Aidoku per iniziare";
 "ADDING_SOURCES_GUIDE_BUTTON" = "Guida all'aggiunta di fonti";
 "UPDATES" = "Aggiornamenti";
 "BUTTON_UPDATE" = "AGGIORNA";
@@ -160,7 +158,6 @@
 "SOURCE_LISTS" = "Elenchi delle fonti";
 "SOURCE_LIST_ADDED" = "Elenco fonti aggiunto";
 "SOURCE_LIST_ADDED_TEXT" = "È ora possibile sfogliare le fonti esterne nella scheda Sfoglia.";
-"SHOW_NSFW_SOURCES" = "Mostra fonti per adulti";
 "SOURCE_LIST_URL" = "URL dell'elenco delle fonti";
 "SOURCE_LIST_ADD" = "Aggiungi elenco fonti";
 "SOURCE_LIST_ADD_TEXT" = "Immetti l'URL dell'elenco delle fonti";
@@ -314,7 +311,7 @@
 "%i_CHAPTERS" = "%i Capitoli";
 "RENAME_CATEGORY_FAIL_INFO" = "I nomi delle categorie devono essere unici.";
 "ALL_CHAPTERS_READ" = "Tutti i capitoli letti";
-"TRACKING" = "Tracciamento";
+"IS_TRACKING" = "Tracciamento";
 "DEFAULT_READING_MODE" = "Modalità di lettura predefinita";
 "PILLARBOX" = "Pillarbox";
 "PILLARBOX_AMOUNT" = "Totale Pillarbox";

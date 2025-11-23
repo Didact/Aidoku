@@ -116,7 +116,7 @@
 "MIGRATE_%i_ITEMS?" = "Migro %i artikuj?";
 "MIGRATE_ONE_ITEM?" = "Migro një artikull?";
 "UPLOAD_DATE" = "Data e Ngarkimit";
-"TRACKING" = "Gjurmimi";
+"IS_TRACKING" = "Gjurmimi";
 "ALL_CHAPTERS_READ" = "Të gjithë kapitujt e lexuar";
 "DEFAULT_READING_MODE" = "Mënyra Standarde e Leximit";
 "PILLARBOX" = "Pillarbox";
@@ -126,7 +126,6 @@
 "NO_WIFI_ALERT_TITLE" = "Pa Wi-Fi";
 "NO_WIFI_ALERT_MESSAGE" = "Duhet të jeni të lidhur me Wi-Fi për të shkarkuar këtë përmbajtje. Ju lutemi lidhuni me Wi-Fi dhe provoni përsëri.";
 "ADD_TO_LIBRARY" = "Shto në Bibliotekë";
-"BROWSE_NO_SOURCES_TEXT" = "Konfiguroni listën tuaj të burimeve ose hapni\nnjë burim në Aidoku për të filluar";
 "NEXT_COLON" = "E Radhës:";
 "FINISHED_COLON" = "Përfunduar:";
 "CURRENT_COLON" = "Aktual:";
@@ -136,7 +135,6 @@
 "APPEARANCE" = "Pamja";
 "INCOGNITO_MODE" = "Mënyra Inkognito";
 "PIN_MANGA_UNREAD" = "Pa Lexuar";
-"SHOW_NSFW_SOURCES" = "Trego Burimet NSFW";
 "RESTORE_BACKUP_TEXT" = "Të gjitha të dhënat aktuale do të hiqen dhe do të zëvendësohen me të dhënat nga kjo kopje rezervë.";
 "BACKUP_IMPORT_SUCCESS" = "Kopja Rezervë u Importua";
 "RESTORE" = "Rikthe";
@@ -161,7 +159,6 @@
 "LIBRARY" = "Bibliotekë";
 "LIBRARY_SEARCH" = "Kërko në Bibliotekë";
 "LIBRARY_EMPTY" = "Biblioteka është bosh";
-"LIBRARY_ADD_FROM_BROWSE" = "Shto manga nga skeda e shfletimit";
 "REMOVE_FROM_LIBRARY" = "Hiqe nga Biblioteka";
 "MANGA_INFO" = "Informacion për Mangën";
 "SORT_BY" = "Rendit sipas";

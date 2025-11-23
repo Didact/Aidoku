@@ -46,7 +46,6 @@
 "RESET_SETTINGS_TEXT" = "Denna handling är oåterkallelig. Alla app- och källinställningar kommer att återställas.";
 "NO_CHAPTERS_AVAILABLE" = "Inga kapitel finns tillgängliga";
 "EXTERNAL" = "Extern";
-"SHOW_NSFW_SOURCES" = "Visa NSFW-källor";
 "UPLOAD_DATE" = "Uppladdningsdatum";
 "SOURCE_LIST_ADD_FAIL" = "Kunde ej lägga till källistan";
 "1_CHAPTER" = "1 kapitel";
@@ -80,7 +79,7 @@
 "%@_AGO" = "%@ sen";
 "SHARE" = "Dela";
 "INCOGNITO_MODE" = "Inkognitoläge";
-"TRACKING" = "Spårning";
+"IS_TRACKING" = "Spårning";
 "LAST_UPDATED" = "Senast uppdaterad";
 "RESTORE_BACKUP" = "Återställ till denna säkerhetskopia?";
 "FAILED_CHAPTER_LOAD" = "Kunde ej ladda kapitlet";
@@ -163,7 +162,6 @@
 "ALL_CHAPTERS_READ" = "Alla kapitel är lästa";
 "ADD_TO_CATEGORY" = "Lägg till i kategori";
 "LTR" = "Vänster till höger";
-"BROWSE_NO_SOURCES_TEXT" = "Konfigurera din källista eller öppna en\nkälla i Aidoku för att komma igång";
 "NOT_PUBLISHED" = "Ej publicerad";
 "CORRUPTED_BACKUP_TEXT" = "Denna säkerhetskopia tycks ha felkonfigurerad data. Ej möjligt att döpa om.";
 "SOURCE_LIST_ADDED" = "Källista tillagd";
@@ -242,7 +240,6 @@
 "CANCEL_DOWNLOAD" = "Avbryt nedladdning";
 "MANGA_INFO" = "Mangainformation";
 "BACKUPS" = "Säkerhetskopior";
-"LIBRARY_ADD_FROM_BROWSE" = "Lägg till manga från upptäck-fliken";
 
 // Settings
 "SETTINGS" = "Inställningar";
@@ -371,9 +368,8 @@
 "NO_AVAILABLE_SOURCES_INFO" = "Justera dina filter för att kunna se fler externa källor.";
 "ALL_SOURCES_INSTALLED" = "Alla installerade källor";
 "ALL_SOURCES_INSTALLED_INFO" = "Det finns inga fler externa källor att installera.";
-"LOCAL_SOURCE" = "Lokal källa";
-"LOCAL_SOURCE_INFO" = "Den lokala källan låter dig ladda upp och hantera ditt egna bibliotek inom Aidoku.";
-"LOCAL_SOURCE_SETUP" = "Konfigurera lokal källa";
+"LOCAL_FILES_INFO" = "Den lokala källan låter dig ladda upp och hantera ditt egna bibliotek inom Aidoku.";
+"LOCAL_FILES_SETUP" = "Konfigurera lokal källa";
 "LOCAL_FILES" = "Lokala filer";
 "LOCAL_FILES_TAGLINE" = "Läs från lokala filer";
 "IMPORT" = "Importera";

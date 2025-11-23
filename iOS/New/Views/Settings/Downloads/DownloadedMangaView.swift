@@ -1,5 +1,5 @@
 //
-//  MangaDownloadDetailView.swift
+//  DownloadedMangaView.swift
 //  Aidoku
 //
 //  Created by doomsboygaming on 6/25/25.
@@ -7,12 +7,15 @@
 
 import AidokuRunner
 import SwiftUI
-import UIKit
 
-struct MangaDownloadDetailView: View {
+struct DownloadedMangaView: View {
     @StateObject private var viewModel: ViewModel
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var path: NavigationCoordinator
+
+    @State private var openChapter: DownloadedChapterInfo?
+
+    @Namespace private var transitionNamespace
 
     init(manga: DownloadedMangaInfo) {
         self._viewModel = StateObject(wrappedValue: .init(manga: manga))
@@ -34,29 +37,36 @@ struct MangaDownloadDetailView: View {
         .navigationTitle(viewModel.manga.displayTitle)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if viewModel.manga.isInLibrary || !viewModel.chapters.isEmpty {
-                    Menu {
-                        if viewModel.manga.isInLibrary, let source = SourceManager.shared.source(for: viewModel.manga.sourceId) {
-                            Button {
-                                openMangaView(source: source)
-                            } label: {
-                                Label(NSLocalizedString("VIEW_SERIES"), systemImage: "book")
-                            }
+                Menu {
+                    if viewModel.manga.isInLibrary, let source = SourceManager.shared.source(for: viewModel.manga.sourceId) {
+                        Button {
+                            openMangaView(source: source)
+                        } label: {
+                            Label(NSLocalizedString("VIEW_SERIES"), systemImage: "book")
                         }
+                    }
 
-                        if !viewModel.chapters.isEmpty {
-                            Button(role: .destructive, action: viewModel.confirmDeleteAll) {
-                                Label(NSLocalizedString("REMOVE_ALL_DOWNLOADS"), systemImage: "trash")
-                            }
+                    Button {
+                        if let url = DownloadManager.shared.getMangaDirectoryUrl(identifier: viewModel.manga.mangaIdentifier) {
+                            UIApplication.shared.open(url)
                         }
                     } label: {
-                        MoreIcon()
+                        Label(NSLocalizedString("VIEW_FILES"), systemImage: "folder")
                     }
+
+                    if !viewModel.chapters.isEmpty {
+                        Button(role: .destructive, action: viewModel.confirmDeleteAll) {
+                            Label(NSLocalizedString("REMOVE_ALL_DOWNLOADS"), systemImage: "trash")
+                        }
+                    }
+                } label: {
+                    MoreIcon()
                 }
             }
         }
         .task {
             await viewModel.loadChapters()
+            await viewModel.loadHistory()
         }
         .alert(NSLocalizedString("REMOVE_ALL_DOWNLOADS"), isPresented: $viewModel.showingDeleteAllConfirmation) {
             Button(NSLocalizedString("CANCEL"), role: .cancel) { }
@@ -66,6 +76,16 @@ struct MangaDownloadDetailView: View {
         } message: {
             Text(NSLocalizedString("REMOVE_ALL_DOWNLOADS_CONFIRM"))
         }
+        .fullScreenCover(item: $openChapter) { chapter in
+            let readerController = ReaderViewController(
+                source: SourceManager.shared.source(for: viewModel.manga.sourceId),
+                manga: viewModel.manga.toManga(),
+                chapter: chapter.toChapter()
+            )
+            SwiftUIReaderNavigationController(readerViewController: readerController)
+                .ignoresSafeArea()
+                .navigationTransitionZoom(sourceID: chapter, in: transitionNamespace)
+        }
     }
 
     private var emptyStateView: some View {
@@ -74,24 +94,31 @@ struct MangaDownloadDetailView: View {
             systemImage: "arrow.down.circle",
             description: Text(NSLocalizedString("NO_DOWNLOADS_TEXT"))
         )
+        .ignoresSafeArea()
     }
 
     private var chaptersList: some View {
         List {
-            // Manga info header
             Section {
                 mangaInfoHeader
             }
 
-            // Chapters list with smooth animations
             Section {
                 ForEach(viewModel.chapters) { chapter in
                     Button {
-                        openReaderView(chapter: chapter)
+                        openChapter = chapter
                     } label: {
-                        ChapterRow(chapter: chapter)
+                        ChapterRow(chapter: chapter, history: viewModel.readingHistory[chapter.chapterId])
                     }
                     .foregroundStyle(.primary)
+                    .contextMenu {
+                        Button {
+                            showShareSheet(chapter: chapter)
+                        } label: {
+                            Label(NSLocalizedString("SHARE"), systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    .matchedTransitionSourcePlease(id: chapter, in: transitionNamespace)
                 }
                 .onDelete(perform: delete)
             } header: {
@@ -167,17 +194,6 @@ struct MangaDownloadDetailView: View {
         return components.joined(separator: " • ")
     }
 
-    private func openReaderView(chapter: DownloadedChapterInfo) {
-        let readerController = ReaderViewController(
-            source: SourceManager.shared.source(for: viewModel.manga.sourceId),
-            manga: viewModel.manga.toManga(),
-            chapter: chapter.toChapter()
-        )
-        let navigationController = ReaderNavigationController(rootViewController: readerController)
-        navigationController.modalPresentationStyle = .fullScreen
-        path.present(navigationController)
-    }
-
     private func openMangaView(source: AidokuRunner.Source) {
         let viewController = MangaViewController(
             source: source,
@@ -186,10 +202,41 @@ struct MangaDownloadDetailView: View {
         )
         path.push(viewController)
     }
+
+    private func showShareSheet(chapter: DownloadedChapterInfo) {
+        Task {
+            let identifier = ChapterIdentifier(
+                sourceKey: viewModel.manga.sourceId,
+                mangaKey: viewModel.manga.mangaId,
+                chapterKey: chapter.chapterId
+            )
+            if let url = await DownloadManager.shared.getCompressedFile(for: identifier) {
+                let activityViewController = UIActivityViewController(
+                    activityItems: [url],
+                    applicationActivities: nil
+                )
+                guard let sourceView = path.rootViewController?.view else { return }
+                activityViewController.popoverPresentationController?.sourceView = sourceView
+                // manually positioned in top right of screen, near the right navigation bar button
+                activityViewController.popoverPresentationController?.sourceRect = CGRect(
+                    x: UIScreen.main.bounds.width - 30,
+                    y: 60,
+                    width: 0,
+                    height: 0
+                )
+                path.present(activityViewController)
+            }
+        }
+    }
 }
 
 private struct ChapterRow: View {
     let chapter: DownloadedChapterInfo
+    let history: (page: Int, date: Int)?
+
+    var isRead: Bool {
+        history?.page == -1
+    }
 
     var body: some View {
         HStack {
@@ -197,6 +244,7 @@ private struct ChapterRow: View {
                 Text(chapter.displayTitle)
                     .font(.callout)
                     .lineLimit(1)
+                    .foregroundStyle(isRead ? .secondary : .primary)
 
                 // Format like chapter subtitles: Date • Size
                 if let subtitle = formatChapterSubtitle() {
@@ -215,7 +263,7 @@ private struct ChapterRow: View {
     private func formatChapterSubtitle() -> String? {
         var components: [String] = []
 
-        // Add download date if available
+        // download date
         if let downloadDate = chapter.downloadDate {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
@@ -223,15 +271,20 @@ private struct ChapterRow: View {
             components.append(formatter.string(from: downloadDate))
         }
 
-        // Add size
+        // file size
         components.append(ByteCountFormatter.string(fromByteCount: chapter.size, countStyle: .file))
+
+        // pages read
+        if let page = history?.page, page > 0 {
+            components.append(String(format: NSLocalizedString("PAGE_X"), page))
+        }
 
         return components.isEmpty ? nil : components.joined(separator: " • ")
     }
 }
 
 #Preview {
-    MangaDownloadDetailView(
+    DownloadedMangaView(
         manga: DownloadedMangaInfo(
             sourceId: "test",
             mangaId: "test-manga",

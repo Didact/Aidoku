@@ -24,7 +24,6 @@
 "LIBRARY" = "Bibliotheek";
 "LIBRARY_SEARCH" = "Vind in bibliotheek";
 "LIBRARY_EMPTY" = "Bibliotheek Leeg";
-"LIBRARY_ADD_FROM_BROWSE" = "Voeg manga toe vanuit het ontdekken tabblad";
 "ADD_TO_LIBRARY" = "Voeg toe aan bibliotheek";
 "REMOVE_FROM_LIBRARY" = "Verwijder van bibliotheek";
 "MANGA_INFO" = "Manga Informatie";
@@ -44,7 +43,6 @@
 "CATEGORY_TITLE" = "Categorie titel";
 "DEFAULT_CATEGORY" = "Standaard categorie";
 "ALWAYS_ASK" = "Altijd vragen";
-"BROWSE_NO_SOURCES_TEXT" = "Configureer uw bronnenlijst of open een\nbron in Aidoku om aan de slag te gaan";
 "ADDING_SOURCES_GUIDE_BUTTON" = "Bronnengids toevoegen";
 "UPDATES" = "Updates";
 "INSTALLED" = "Geïnstalleerd";
@@ -148,7 +146,6 @@
 "SOURCE_LISTS" = "Bron lijsten";
 "SOURCE_LIST_ADDED" = "Bron lijsten toegevoegd";
 "SOURCE_LIST_ADDED_TEXT" = "U kunt nu bladeren door externe bronnen in het Blader tabblad.";
-"SHOW_NSFW_SOURCES" = "Toon NSFW Bronnen";
 "SOURCE_LIST_URL" = "Bron lijst URL";
 "RESTORE_BACKUP" = "Herstellen naar deze back-up?";
 "BACKUP_IMPORT_SUCCESS" = "Back-up geïmporteerd";
@@ -230,7 +227,7 @@
 "FIRST_ALTERNATIVE" = "Eerste alternatief";
 "MIGRATE_ONE_ITEM?" = "Migreer 1 deel?";
 "UPLOAD_DATE" = "Upload datum";
-"TRACKING" = "Tracking";
+"IS_TRACKING" = "Tracking";
 "ALL_CHAPTERS_READ" = "Alle hoofdstukken gelezen";
 "MIGRATE_%i_ITEMS?" = "%i items migreren?";
 "DEFAULT_READING_MODE" = "Standaard leesmodus";

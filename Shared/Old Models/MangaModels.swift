@@ -25,16 +25,16 @@ enum PublishingStatus: Int, Codable {
 
     func toString() -> String {
         switch self {
-        case .unknown: return NSLocalizedString("UNKNOWN", comment: "")
-        case .ongoing: return NSLocalizedString("ONGOING", comment: "")
-        case .completed: return NSLocalizedString("COMPLETED", comment: "")
-        case .cancelled: return NSLocalizedString("CANCELLED", comment: "")
-        case .hiatus: return NSLocalizedString("HIATUS", comment: "")
-        case .notPublished: return NSLocalizedString("NOT_PUBLISHED", comment: "")
+            case .unknown: return NSLocalizedString("UNKNOWN", comment: "")
+            case .ongoing: return NSLocalizedString("ONGOING", comment: "")
+            case .completed: return NSLocalizedString("COMPLETED", comment: "")
+            case .cancelled: return NSLocalizedString("CANCELLED", comment: "")
+            case .hiatus: return NSLocalizedString("HIATUS", comment: "")
+            case .notPublished: return NSLocalizedString("NOT_PUBLISHED", comment: "")
         }
     }
 
-    func toNew() -> AidokuRunner.MangaStatus {
+    func toNew() -> AidokuRunner.PublishingStatus {
         switch self {
             case .unknown: .unknown
             case .ongoing: .ongoing
@@ -59,15 +59,15 @@ enum MediaType: Int, Codable {
 
     func toString() -> String {
         switch self {
-        case .unknown: return NSLocalizedString("UNKNOWN", comment: "")
-        case .manga: return NSLocalizedString("MANGA", comment: "")
-        case .manhwa: return NSLocalizedString("MANHWA", comment: "")
-        case .manhua: return NSLocalizedString("MANHUA", comment: "")
-        case .novel: return NSLocalizedString("LIGHT_NOVEL", comment: "")
-        case .oneShot: return NSLocalizedString("ONESHOT", comment: "")
-        case .oel: return NSLocalizedString("OEL", comment: "")
-        case .comic: return NSLocalizedString("COMIC", comment: "")
-        case .book: return NSLocalizedString("BOOK", comment: "") // not really handled yet
+            case .unknown: return NSLocalizedString("UNKNOWN", comment: "")
+            case .manga: return NSLocalizedString("MANGA", comment: "")
+            case .manhwa: return NSLocalizedString("MANHWA", comment: "")
+            case .manhua: return NSLocalizedString("MANHUA", comment: "")
+            case .novel: return NSLocalizedString("LIGHT_NOVEL", comment: "")
+            case .oneShot: return NSLocalizedString("ONESHOT", comment: "")
+            case .oel: return NSLocalizedString("OEL", comment: "")
+            case .comic: return NSLocalizedString("COMIC", comment: "")
+            case .book: return NSLocalizedString("BOOK", comment: "") // not really handled yet
         }
     }
 }
@@ -77,7 +77,7 @@ enum MangaContentRating: Int, Codable {
     case suggestive = 1
     case nsfw = 2
 
-    func toNew() -> AidokuRunner.MangaContentRating {
+    func toNew() -> AidokuRunner.ContentRating {
         switch self {
             case .safe: .safe
             case .suggestive: .suggestive

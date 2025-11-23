@@ -28,7 +28,6 @@
 "LIBRARY" = "Knihovna";
 "LIBRARY_SEARCH" = "Hledat v knihovně";
 "LIBRARY_EMPTY" = "Knihovna je prázdná";
-"LIBRARY_ADD_FROM_BROWSE" = "Přidat mangu z panelu prohlížeče";
 "ADD_TO_LIBRARY" = "Přidat do knihovny";
 "REMOVE_FROM_LIBRARY" = "Odstranit z knihovny";
 "MANGA_INFO" = "Informace o manze";
@@ -50,7 +49,6 @@
 "LAST_OPENED" = "Naposledy otevřeno";
 "LAST_READ" = "Naposledy čteno";
 "DATE_ADDED" = "Datum přidání";
-"BROWSE_NO_SOURCES_TEXT" = "Začněte nakonfigurováním seznamu zdrojů\nnebo otevřením zdroje v Aidoku";
 "ADDING_SOURCES_GUIDE_BUTTON" = "Průvodce přidáváním zdrojů";
 "UPDATES" = "Aktualizace";
 "INSTALLED" = "Nainstalováno";
@@ -199,7 +197,6 @@
 "WITH_COMPLETED_STATUS" = "Se statusem dokončeno";
 "THAT_HAVENT_BEEN_READ" = "Které nebyly přečteny";
 "SOURCE_LISTS" = "Seznamy zdrojů";
-"SHOW_NSFW_SOURCES" = "Zobrazit NSFW zdroje";
 "SOURCE_LIST_URL" = "Adresa URL seznamu zdrojů";
 "BACKUP_IMPORT_SUCCESS" = "Záloha byla importována";
 "RESET_SETTINGS_TEXT" = "Tato akce je nevratná. Všechna nastavení aplikace a zdroje budou resetována.";
@@ -302,7 +299,7 @@
 "PILLARBOX_ORIENTATION_INFO" = "Pillarbox Orientace určuje, pro které orientace má být pillarboxing povolen.";
 "PILLARBOX_ORIENTATION" = "Orientace pillarboxu";
 "PILLARBOX_AMOUNT" = "Hodnota pillarboxu";
-"TRACKING" = "Sledováno";
+"IS_TRACKING" = "Sledováno";
 "BACKUP_ERROR" = "Chyba obnovení zálohy";
 "BACKUP_ERROR_TEXT" = "Při obnově došlo k chybě: %@. Záloha může být neplatná.";
 "SOURCE_LIST_ADD_FAIL_TEXT" = "Zadaná adresa URL seznamu zdrojů je neplatná nebo již byla přidána.";

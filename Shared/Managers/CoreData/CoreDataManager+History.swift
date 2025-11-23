@@ -18,13 +18,31 @@ extension CoreDataManager {
     func clearHistoryExcludingLibrary(context: NSManagedObjectContext? = nil) {
         let context = context ?? self.context
         let request = HistoryObject.fetchRequest()
-        let libraryMangaIds = self.getLibraryManga(context: context).compactMap {
-            $0.manga?.toManga().id
+
+        let pairPredicates = self.getLibraryManga(context: context).compactMap { mangaObj -> NSCompoundPredicate? in
+            guard
+                let mangaId = mangaObj.manga?.id,
+                let sourceId = mangaObj.manga?.sourceId
+            else {
+                return nil
+            }
+            return NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "mangaId == %@", mangaId),
+                NSPredicate(format: "sourceId == %@", sourceId)
+            ])
         }
-        request.predicate = NSPredicate(
-            format: "NOT (mangaId IN %@)",
-            libraryMangaIds
-        )
+
+        let excludePredicate: NSPredicate
+        if pairPredicates.isEmpty {
+            // if nothing in library, don't exclude anything
+            excludePredicate = NSPredicate(value: true)
+        } else {
+            // NOT ((mangaId == a AND sourceId == b) OR (mangaId == c AND sourceId == d) OR ...)
+            let orPredicate = NSCompoundPredicate(orPredicateWithSubpredicates: pairPredicates)
+            excludePredicate = NSCompoundPredicate(notPredicateWithSubpredicate: orPredicate)
+        }
+
+        request.predicate = excludePredicate
         clear(request: request, context: context)
     }
 
@@ -258,6 +276,8 @@ extension CoreDataManager {
         mangaId: String,
         chapterId: String,
         totalPages: Int? = nil,
+        dateRead: Date? = nil,
+        completed: Bool? = nil,
         context: NSManagedObjectContext? = nil
     ) {
         let historyObject = self.getOrCreateHistory(
@@ -267,9 +287,12 @@ extension CoreDataManager {
             context: context
         )
         historyObject.progress = Int16(progress)
-        historyObject.dateRead = Date()
-        if let totalPages = totalPages {
+        historyObject.dateRead = dateRead ?? Date()
+        if let totalPages {
             historyObject.total = Int16(totalPages)
+        }
+        if let completed {
+            historyObject.completed = completed
         }
     }
 
@@ -292,13 +315,15 @@ extension CoreDataManager {
         }
     }
 
+    @discardableResult
     func setCompleted(
         sourceId: String,
         mangaId: String,
         chapterIds: [String],
         date: Date = Date(),
         context: NSManagedObjectContext? = nil
-    ) {
+    ) -> Bool {
+        var success = false
         for chapterId in chapterIds {
             let historyObject = self.getOrCreateHistory(
                 sourceId: sourceId,
@@ -309,7 +334,9 @@ extension CoreDataManager {
             guard !historyObject.completed else { continue }
             historyObject.completed = true
             historyObject.dateRead = date
+            success = true
         }
+        return success
     }
 
     /// Check if history exists for a manga.

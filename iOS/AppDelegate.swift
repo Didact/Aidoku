@@ -5,9 +5,9 @@
 //  Created by Skitty on 12/29/21.
 //
 
-import UIKit
-import Nuke
 import AidokuRunner
+import CloudKit
+import Nuke
 import SwiftUI
 
 @UIApplicationMain
@@ -19,7 +19,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 #endif
 
     static let isSideloaded = Bundle.main.bundleIdentifier != canonicalID
-    static let isiCloudAvailable = FileManager.default.ubiquityIdentityToken != nil
 
     private var networkObserverId: UUID?
 
@@ -84,7 +83,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         UserDefaults.standard.register(
             defaults: [
                 "isSideloaded": Self.isSideloaded, // for icloud sync setting
-                "isiCloudAvailable": Self.isiCloudAvailable,
 
                 "General.incognitoMode": false,
                 "General.icloudSync": false,
@@ -95,11 +93,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
                 "Library.sortOption": 2, // lastOpened
                 "Library.sortAscending": false,
+                "Library.listView": false,
 
                 "Library.lastUpdated": Date.distantPast.timeIntervalSince1970,
 
                 "Library.opensReaderView": false,
                 "Library.unreadChapterBadges": true,
+                "Library.downloadedChapterBadges": true,
                 "Library.pinManga": false,
                 "Library.pinMangaType": 0,
                 "Library.lockLibrary": false,
@@ -109,14 +109,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Library.updateInterval": "daily",
                 "Library.skipTitles": ["hasUnread", "completed", "notStarted"],
                 "Library.excludedUpdateCategories": [String](),
+                "Library.backgroundRefresh": true,
                 "Library.updateOnlyOnWifi": true,
                 "Library.refreshMetadata": false,
-                "Library.deleteDownloadAfterReading": false,
 
                 "Browse.languages": ["multi"] + Locale.preferredLanguages.map { Locale(identifier: $0).languageCode },
+                "Browse.contentRatings": ["safe", "containsNsfw"],
                 "Browse.updateCount": 0,
-                "Browse.showNsfwSources": false,
-                "Browse.labelNsfwSources": true,
 
                 "History.lockHistoryTab": false,
 
@@ -134,6 +133,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Reader.backgroundColor": "black",
                 "Reader.pagesToPreload": 2,
                 "Reader.pagedPageLayout": "auto",
+                "Reader.pagedIsolateFirstPage": false,
+                "Reader.splitWideImages": false,
+                "Reader.reverseSplitOrder": false,
                 "Reader.verticalInfiniteScroll": true,
                 "Reader.pillarbox": false,
                 "Reader.pillarboxAmount": 15,
@@ -141,13 +143,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Reader.orientation": "device",
 
                 "Tracking.updateAfterReading": true,
-                "Tracking.autoSyncFromTracker": false
+                "Tracking.autoSyncFromTracker": false,
+
+                "AutomaticBackups.enabled": true,
+                "AutomaticBackups.interval": "daily",
+                "AutomaticBackups.lastBackup": Date.distantPast.timeIntervalSince1970,
+                "AutomaticBackups.libraryEntries": true,
+                "AutomaticBackups.chapters": true,
+                "AutomaticBackups.tracking": true,
+                "AutomaticBackups.history": true,
+                "AutomaticBackups.categories": true,
+                "AutomaticBackups.settings": true,
+                "AutomaticBackups.sourceLists": true,
+                "AutomaticBackups.sensitiveSettings": false,
+
+                "Library.downloadOnlyOnWifi": false,
+                "Library.deleteDownloadAfterReading": false,
+                "Downloads.compress": true,
+                "Downloads.background": true
             ]
         )
 
+        // check for icloud availability
+        // https://developer.apple.com/documentation/foundation/filemanager/url(forubiquitycontaineridentifier:)
+        // Do not call this method from your app’s main thread. Because this method might take a nontrivial amount of
+        // time to set up iCloud and return the requested URL, you should always call it from a secondary thread.
+        Task.detached {
+            let isiCloudAvailable = FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil
+            await MainActor.run {
+                if !isiCloudAvailable {
+                    LogManager.logger.info("iCloud unavailable")
+                }
+                UserDefaults.standard.register(defaults: ["isiCloudAvailable": isiCloudAvailable])
+            }
+        }
+
         DataLoader.sharedUrlCache.diskCapacity = 0
 
-        let pipeline = ImagePipeline {
+        let pipeline = ImagePipeline(delegate: self) {
             let dataLoader: DataLoader = {
                 let config = URLSessionConfiguration.default
                 config.urlCache = nil
@@ -166,30 +199,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         ImagePipeline.shared = pipeline
 
-        // migrate history to 0.6 format
-        if UserDefaults.standard.string(forKey: "currentVersion") == "0.5" {
-            Task.detached {
-                await self.migrateHistory()
-            }
-        }
-
-        UserDefaults.standard.set(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, forKey: "currentVersion")
+        performMigration()
 
         networkObserverId = Reachability.registerConnectionTypeObserver { connectionType in
             switch connectionType {
-            case .wifi:
-                if UserDefaults.standard.bool(forKey: "Library.downloadOnlyOnWifi") {
-                    DownloadManager.shared.ignoreConnectionType = false
-                    DownloadManager.shared.resumeDownloads()
-                }
-            case .cellular, .none:
-                if UserDefaults.standard.bool(forKey: "Library.downloadOnlyOnWifi") && !DownloadManager.shared.ignoreConnectionType {
-                    DownloadManager.shared.pauseDownloads()
-                }
+                case .wifi:
+                    if UserDefaults.standard.bool(forKey: "Library.downloadOnlyOnWifi") {
+                        Task {
+                            await DownloadManager.shared.resumeDownloads()
+                        }
+                    }
+                case .cellular, .none:
+                    if UserDefaults.standard.bool(forKey: "Library.downloadOnlyOnWifi") {
+                        Task {
+                            await DownloadManager.shared.pauseDownloads()
+                        }
+                    }
             }
         }
 
         application.applicationSupportsShakeToEdit = true
+
+        BackupManager.shared.register()
+        MangaManager.shared.register()
+
+        Task {
+            await BackupManager.shared.scheduleAutoBackup()
+            await MangaManager.shared.scheduleLibraryRefresh()
+        }
 
         return true
     }
@@ -202,20 +239,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
     }
 
-    func application(_ application: UIApplication, open url: URL, sourceApplication: String?, annotation: Any) -> Bool {
-        handleUrl(url: url)
-        return true
-    }
-
     func applicationWillTerminate(_ application: UIApplication) {
         guard let networkObserverId else { return }
         Reachability.unregisterConnectionTypeObserver(networkObserverId)
+    }
+}
+
+extension AppDelegate {
+    func performMigration() {
+        // migrate history to 0.6 format
+        if UserDefaults.standard.string(forKey: "currentVersion") == "0.5" {
+            Task.detached {
+                await self.migrateHistory()
+            }
+        }
+
+        // migrate showNsfwSources setting
+        if UserDefaults.standard.bool(forKey: "Browse.showNsfwSources") {
+            UserDefaults.standard.setValue(["safe", "containsNsfw", "primarilyNsfw"], forKey: "Browse.contentRatings")
+            UserDefaults.standard.removeObject(forKey: "Browse.showNsfwSources")
+        }
+
+        UserDefaults.standard.set(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, forKey: "currentVersion")
     }
 
     func migrateHistory() async {
         showLoadingIndicator(style: .progress)
         try? await Task.sleep(nanoseconds: 500 * 1000000)
-        await CoreDataManager.shared.migrateChapterHistory(progress: { progress in
+        await CoreDataManager.shared.migrateChapterHistory(progress: { @Sendable progress in
             Task { @MainActor in
                 self.indicatorProgress = progress
             }
@@ -231,14 +282,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func showLoadingIndicator(style: LoadingStyle = .indefinite, completion: (() -> Void)? = nil) {
         switch style {
-        case .indefinite:
-            loadingIndicator.startAnimating()
-            loadingIndicator.isHidden = false
-            progressView.isHidden = true
-        case .progress:
-            progressView.progress = 0
-            loadingIndicator.isHidden = true
-            progressView.isHidden = false
+            case .indefinite:
+                loadingIndicator.startAnimating()
+                loadingIndicator.isHidden = false
+                progressView.isHidden = true
+            case .progress:
+                progressView.progress = 0
+                loadingIndicator.isHidden = true
+                progressView.isHidden = false
         }
         visibleViewController?.present(loadingAlert, animated: true, completion: completion)
     }
@@ -318,7 +369,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
         } else if url.pathExtension == "aix" {
             Task {
-                let result = try? await SourceManager.shared.importSource(from: url)
+                let result = await SourceManager.shared.importSource(from: url)
                 if result == nil {
                     presentAlert(
                         title: NSLocalizedString("IMPORT_FAIL", comment: ""),
@@ -327,16 +378,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 }
             }
         } else if url.pathExtension == "json" || url.pathExtension == "aib" {
-            if BackupManager.shared.importBackup(from: url) {
-                presentAlert(
-                    title: NSLocalizedString("BACKUP_IMPORT_SUCCESS", comment: ""),
-                    message: NSLocalizedString("BACKUP_IMPORT_SUCCESS_TEXT", comment: "")
-                )
-            } else {
-                presentAlert(
-                    title: NSLocalizedString("IMPORT_FAIL", comment: ""),
-                    message: NSLocalizedString("BACKUP_IMPORT_FAIL_TEXT", comment: "")
-                )
+            Task {
+                if await BackupManager.shared.importBackup(from: url) {
+                    presentAlert(
+                        title: NSLocalizedString("BACKUP_IMPORT_SUCCESS", comment: ""),
+                        message: NSLocalizedString("BACKUP_IMPORT_SUCCESS_TEXT", comment: "")
+                    )
+                } else {
+                    presentAlert(
+                        title: NSLocalizedString("IMPORT_FAIL", comment: ""),
+                        message: NSLocalizedString("BACKUP_IMPORT_FAIL_TEXT", comment: "")
+                    )
+                }
             }
         } else if
             SourceManager.shared.localSourceInstalled
@@ -554,5 +607,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         topViewController?.present(alertController, animated: true, completion: completion)
+    }
+}
+
+extension AppDelegate: ImagePipelineDelegate {
+    func imageDecoder(for context: ImageDecodingContext, pipeline: ImagePipeline) -> (any ImageDecoding)? {
+        if context.request.userInfo[.processesKey] as? Bool == true {
+            // when using a page processor, don't decode data as an image since it may be invalid
+            ImageDecoders.Empty.init()
+        } else {
+            pipeline.configuration.makeImageDecoder(context)
+        }
     }
 }

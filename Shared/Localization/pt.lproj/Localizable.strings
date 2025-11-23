@@ -120,7 +120,6 @@
 "RENAME" = "Renomear";
 "CLEAR" = "Limpar";
 "REMOVE_DOWNLOADS" = "Remover descargas";
-"LIBRARY_ADD_FROM_BROWSE" = "Adicionar Mangás da Guia Explorar";
 "ADD_TO_LIBRARY" = "Adicionar para Biblioteca";
 "TITLE" = "Título";
 "LAST_OPENED" = "Último Aberto";
@@ -133,7 +132,6 @@
 // Browse
 "BROWSE" = "Explorar";
 "BROWSE_NO_SOURCES" = "Sem Fontes";
-"BROWSE_NO_SOURCES_TEXT" = "Configure a sua lista de fontes ou abra\numa fonte no Aidoku para iniciar";
 "BUTTON_UPDATE" = "ATUALIZAR";
 "BUTTON_GET" = "OBTER";
 "BUTTON_ERROR" = "ERRO";
@@ -214,7 +212,6 @@
 "SOURCE_LISTS" = "Listas de Fontes";
 "SOURCE_LIST_ADDED" = "Lista de Fontes Adicionada";
 "SOURCE_LIST_ADDED_TEXT" = "Agora pode procurar fontes externas na guia Explorar.";
-"SHOW_NSFW_SOURCES" = "Mostrar Fontes NSFW";
 "SOURCE_LIST_URL" = "URL da Lista de Fontes";
 "SOURCE_LIST_ADD" = "Adicionar Lista de Fontes";
 "SOURCE_LIST_ADD_TEXT" = "Digite o URL da Lista de Fontes";
@@ -296,7 +293,7 @@
 "WEBTOON" = "Webtoon";
 "AVAILABLE" = "Disponível";
 "FIRST_ALTERNATIVE" = "Pirmeira Alternativa";
-"TRACKING" = "Tracking";
+"IS_TRACKING" = "Tracking";
 "PILLARBOX" = "Efeito Pillarbox";
 "PILLARBOX_ORIENTATION" = "Orientação Pillarbox";
 "PILLARBOX_ORIENTATION_INFO" = "A Orientação Pillarbox determina que orientações deve ser habilitada.";
@@ -353,7 +350,6 @@
 "ENABLE_PERMISSION" = "Ativar permissão";
 "CONTENT" = "Conteúdo";
 "%@_EXPERIMENTAL" = "%@ (Experimental)";
-"DOWNLOAD_MANAGER" = "Gestor de descargas";
 "NO_DOWNLOADS" = "Sem descargas";
 "TOTAL_DOWNLOADS" = "Total de descargas";
 "%i_SERIES" = "%i series";
@@ -380,7 +376,6 @@
 "NO_RESULTS" = "Sem resultados";
 "NO_EXTERNAL_SOURCES" = "Nenhumas fontes externas";
 "ALL_SOURCES_INSTALLED" = "Todas as fontes instaladas";
-"LOCAL_SOURCE" = "Fonte local";
 "LOCAL_FILES" = "Ficheiros locais";
 "LOCAL_FILES_TAGLINE" = "Ler dos ficheiros locais";
 "IMPORT" = "Importar";

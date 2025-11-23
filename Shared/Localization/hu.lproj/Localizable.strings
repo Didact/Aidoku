@@ -116,9 +116,7 @@
 "RENAME" = "Átnevezés";
 "GENERAL" = "Általános";
 "SELECT_CHAPTERS" = "Fejezetek kijelölése";
-"LIBRARY_ADD_FROM_BROWSE" = "Adj hozzá mangát a \"Böngészés\" fülről";
 "CATEGORY_ADD_TEXT" = "Add meg az új kategória címét ahhoz, hogy létrejöjjön.";
-"BROWSE_NO_SOURCES_TEXT" = "Konfiguráljon saját forrás listát vagy\nnyisson meg egy forrást az Aidokuban a kezdéshez";
 "BUTTON_ERROR" = "HIBA";
 "UNPIN" = "Kitűzés visszavonása";
 "INFO" = "Infó";
@@ -204,7 +202,6 @@
 "MANGA_PER_ROW" = "Manga soronként";
 "ONLY_DOWNLOAD_ON_WIFI" = "Letöltés Csak Wi-Fi-n";
 "WITH_COMPLETED_STATUS" = "Befejezett státuszuak";
-"SHOW_NSFW_SOURCES" = "NSFW Források Megjelenítése";
 "SOURCE_LIST_URL" = "Forráslista URL";
 "SOURCE_LIST_ADDED" = "Forráslista Hozzáadva";
 "SOURCE_LIST_ADDED_TEXT" = "A Böngészés lapon most már böngészhet a külső források között.";
@@ -217,7 +214,6 @@
 "CONTENT" = "Tartalom";
 "%@_EXPERIMENTAL" = "%@ (Kísérleti)";
 "REMOVE_ALL_DOWNLOADS_CONFIRM" = "Biztos vagy benne, hogy törölni szeretnéd az összes letöltött fájlt?";
-"DOWNLOAD_MANAGER" = "Letöltéskezelő";
 "NO_DOWNLOADS" = "Nincsenek Letöltések";
 "NO_DOWNLOADS_TEXT" = "A letöltött tartalmak itt fognak megjelenni.";
 "DOWNLOADED_CHAPTERS" = "Letöltött Fejezetek";
@@ -259,6 +255,5 @@
 "NO_AVAILABLE_SOURCES_INFO" = "Módosítsa a szűrőket a külső források megtekintéséhez.";
 "ALL_SOURCES_INSTALLED" = "Minden Forrás Telepítve";
 "ALL_SOURCES_INSTALLED_INFO" = "Nincs több telepíteni való külső forrás.";
-"LOCAL_SOURCE" = "Helyi Forrás";
-"LOCAL_SOURCE_INFO" = "A helyi forrás lehetővé teszi saját olvasási könyvtár feltöltését és kezelését közvetlenül az Aidoku-ban.";
-"LOCAL_SOURCE_SETUP" = "Helyi Forrás Beállítása";
+"LOCAL_FILES_INFO" = "A helyi forrás lehetővé teszi saját olvasási könyvtár feltöltését és kezelését közvetlenül az Aidoku-ban.";
+"LOCAL_FILES_SETUP" = "Helyi Forrás Beállítása";

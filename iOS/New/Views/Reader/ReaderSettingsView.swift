@@ -14,6 +14,7 @@ struct ReaderSettingsView: View {
     @State private var tapZones: DefaultTapZones
     @StateObject private var downsampleImages = UserDefaultsBool(key: "Reader.downsampleImages")
     @StateObject private var upscaleImages = UserDefaultsBool(key: "Reader.upscaleImages")
+    @StateObject private var splitWideImages = UserDefaultsBool(key: "Reader.splitWideImages")
 
     @Environment(\.dismiss) private var dismiss
 
@@ -92,9 +93,10 @@ struct ReaderSettingsView: View {
                             key: "Reader.backgroundColor",
                             title: NSLocalizedString("READER_BG_COLOR"),
                             value: .select(.init(
-                                values: ["system", "white", "black"],
+                                values: ["system", "auto", "white", "black"],
                                 titles: [
                                     NSLocalizedString("READER_BG_COLOR_SYSTEM"),
+                                    NSLocalizedString("READER_BG_COLOR_AUTO"),
                                     NSLocalizedString("READER_BG_COLOR_WHITE"),
                                     NSLocalizedString("READER_BG_COLOR_BLACK")
                                 ]
@@ -212,6 +214,24 @@ struct ReaderSettingsView: View {
                                 value: .toggle(.init())
                             )
                         )
+                        SettingView(
+                            setting: .init(
+                                key: "Reader.splitWideImages",
+                                title: NSLocalizedString("SPLIT_WIDE_IMAGES"),
+                                notification: .init("Reader.splitWideImages"),
+                                value: .toggle(.init())
+                            )
+                        )
+                        if splitWideImages.value {
+                            SettingView(
+                                setting: .init(
+                                    key: "Reader.reverseSplitOrder",
+                                    title: NSLocalizedString("REVERSE_SPLIT_ORDER"),
+                                    notification: .init("Reader.reverseSplitOrder"),
+                                    value: .toggle(.init())
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -263,7 +283,9 @@ struct ReaderSettingsView: View {
             }
             .animation(.default, value: downsampleImages.value)
             .animation(.default, value: upscaleImages.value)
+            .animation(.default, value: splitWideImages.value)
             .navigationTitle(NSLocalizedString("READER_SETTINGS"))
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     CloseButton {

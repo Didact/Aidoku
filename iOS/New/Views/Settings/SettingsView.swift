@@ -57,6 +57,7 @@ extension SettingsView {
                                                 HStack(spacing: 2) {
                                                     ForEach(Array(zip(setting.paths.indices, setting.paths)), id: \.0.self) { index, title in
                                                         Text(title)
+                                                            .lineLimit(1)
                                                         if index < setting.paths.count - 1 {
                                                             Image(systemName: "arrow.forward")
                                                         }
@@ -149,13 +150,18 @@ extension SettingsView {
                 }
 
             case "Logs.logServer":
-                LogManager.logger.streamUrl = UserDefaults.standard.string(forKey: "Logs.logServer").flatMap(URL.init)
+                Task {
+                    let url = UserDefaults.standard.string(forKey: "Logs.logServer").flatMap(URL.init)
+                    await LogManager.logger.store.setStreamUrl(url)
+                }
             case "Logs.export":
-                let url = LogManager.export()
-                let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                guard let sourceView = path.rootViewController?.view else { return }
-                vc.popoverPresentationController?.sourceView = sourceView
-                path.present(vc)
+                Task {
+                    let url = await LogManager.export()
+                    let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                    guard let sourceView = path.rootViewController?.view else { return }
+                    vc.popoverPresentationController?.sourceView = sourceView
+                    path.present(vc)
+                }
             case "Logs.display":
                 path.push(LogViewController())
 
@@ -287,8 +293,8 @@ extension SettingsView {
             SourceListsView()
         } else if key == "Backups" {
             BackupsView().environmentObject(path)
-        } else if key == "DownloadManager" {
-            DownloadManagerView().environmentObject(path)
+        } else if key == "Downloads" {
+            DownloadsView().environmentObject(path)
         }
     }
 

@@ -24,7 +24,6 @@
 "DOWNLOAD" = "Herunterladen";
 "DOWNLOAD_QUEUE" = "Download-Warteschlange";
 "CANCEL_DOWNLOAD" = "Download abbrechen";
-"LIBRARY_ADD_FROM_BROWSE" = "Füge Manga von der „Durchsuchen“-Seite hinzu";
 "ADD_TO_LIBRARY" = "Zu Bibliothek hinzufügen";
 "REMOVE_FROM_LIBRARY" = "Aus Bibliothek entfernen";
 "MANGA_INFO" = "Manga-Info";
@@ -71,7 +70,6 @@
 // Categories
 "ALL" = "Alle";
 "BROWSE_NO_SOURCES" = "Keine Quelle";
-"BROWSE_NO_SOURCES_TEXT" = "Konfiguriere deine Quellenliste oder öffne eine\nQuelle in Aidoku, um loszulegen";
 
 // Source
 "SOURCE_INFO" = "Quelleninfo";
@@ -202,7 +200,6 @@
 "EVERY_2_DAYS" = "Alle 2 Tage";
 "WEEKLY" = "Wöchentlich";
 "SOURCE_LISTS" = "Quellenlisten";
-"SHOW_NSFW_SOURCES" = "NSFW-Quellen anzeigen";
 "SOURCE_LIST_ADD" = "Quellenliste hinzufügen";
 "SOURCE_LIST_ADD_TEXT" = "Gib die URL der Quellenliste ein";
 "SOURCE_LIST_ADD_FAIL" = "Quellenliste hinzufügen fehlgeschlagen";
@@ -316,7 +313,7 @@
 "ALL_CHAPTERS_READ" = "Alle Kapitel gelesen";
 "DEFAULT_READING_MODE" = "Standard Lesemodus";
 "PILLARBOX" = "Pillarbox";
-"TRACKING" = "Tracking";
+"IS_TRACKING" = "Tracking";
 "PILLARBOX_ORIENTATION" = "Pillarbox Orientierung";
 "BOTH" = "Beide";
 "PILLARBOX_AMOUNT" = "Randgröße";
@@ -368,7 +365,6 @@
 "NO_AVAILABLE_SOURCES_INFO" = "Passe deine Filter an, um mehr externe Quellen zu sehen.";
 "ALL_SOURCES_INSTALLED" = "Alle Quellen installiert";
 "ALL_SOURCES_INSTALLED_INFO" = "Es gibt keine weiteren externen Quellen zum installieren.";
-"LOCAL_SOURCE" = "Lokale Quelle";
 "INVALID_URL" = "Ungültige URL";
 "MORE_BARBUTTON" = "Mehr";
 "NETWORK_ERROR" = "Netzwerkfehler";

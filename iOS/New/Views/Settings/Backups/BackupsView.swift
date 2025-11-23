@@ -17,70 +17,30 @@ struct BackupsView: View {
     @State private var targetRenameBackupUrl: URL?
     @State private var backupName: String = ""
     @State private var showCreateSheet = false
+    @State private var showAutoBackupsSheet = false
     @State private var showRenameAlert = false
 
     @EnvironmentObject private var path: NavigationCoordinator
+
+    @Namespace private var transitionNamespace
+
+    private enum SheetID: String {
+        case create
+        case autoBackup
+    }
 
     init() {
         self._backupUrls = State(initialValue: BackupManager.backupUrls)
     }
 
     var body: some View {
-        List {
+        let list = List {
             Section {
                 ForEach(backupUrls, id: \.self) { url in
                     let backup = backups[url]
 
                     if let backup {
-                        Button {
-                            targetRestoreBackup = backup
-                        } label: {
-                            HStack {
-                                let date = DateFormatter.localizedString(from: backup.date, dateStyle: .short, timeStyle: .short)
-                                if let name = backup.name {
-                                    VStack(alignment: .leading) {
-                                        Text(name)
-                                            .lineLimit(1)
-                                        Text(date)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                } else {
-                                    Text(String(format: NSLocalizedString("BACKUP_%@"), date))
-                                }
-                                Spacer()
-                                if
-                                    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-                                    let size = attributes[FileAttributeKey.size] as? Int64
-                                {
-                                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                                        .foregroundStyle(.secondary)
-                                        .font(.footnote)
-                                }
-                            }
-                        }
-                        .foregroundStyle(.primary)
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                onDelete(at: IndexSet(integer: backupUrls.firstIndex(of: url)!))
-                            } label: {
-                                Label(NSLocalizedString("DELETE"), systemImage: "trash")
-                            }
-                            Button {
-                                targetRenameBackupUrl = url
-                                backupName = backup.name ?? ""
-                                showRenameAlert = true
-                            } label: {
-                                Label(NSLocalizedString("RENAME"), systemImage: "pencil")
-                            }
-                            .tint(.indigo)
-                        }
-                        .contextMenu {
-                            Button {
-                                export(url: url)
-                            } label: {
-                                Label(NSLocalizedString("EXPORT"), systemImage: "square.and.arrow.up")
-                            }
-                        }
+                        backupCell(url: url, backup: backup)
                     } else if invalidBackups.contains(url) {
                         Text(NSLocalizedString("CORRUPTED_BACKUP"))
                     } else {
@@ -98,17 +58,13 @@ struct BackupsView: View {
         .animation(.default, value: backupUrls)
         .animation(.default, value: backups)
         .navigationTitle(NSLocalizedString("BACKUPS"))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showCreateSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-            }
-        }
         .sheet(isPresented: $showCreateSheet) {
             BackupCreateView()
+                .navigationTransitionZoom(sourceID: SheetID.create, in: transitionNamespace)
+        }
+        .sheet(isPresented: $showAutoBackupsSheet) {
+            AutomaticBackupsView()
+                .navigationTransitionZoom(sourceID: SheetID.autoBackup, in: transitionNamespace)
         }
         .sheet(item: $targetRestoreBackup) { backup in
             BackupContentView(backup: backup)
@@ -138,12 +94,140 @@ struct BackupsView: View {
             backupUrls = BackupManager.backupUrls
             loadBackupInfo()
         }
+
+        if #available(iOS 26.0, *) {
+            list
+                .toolbar {
+                    toolbarContentiOS26
+                }
+        } else {
+            list
+                .toolbar {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        autoBackupButton
+                        createBackupButton
+                    }
+                }
+        }
+    }
+
+    var autoBackupButton: some View {
+        Button {
+            showAutoBackupsSheet = true
+        } label: {
+            let imageName = if #available(iOS 18.0, *) {
+                "clock.arrow.trianglehead.counterclockwise.rotate.90"
+            } else {
+                "clock.arrow.circlepath"
+            }
+            Image(systemName: imageName)
+        }
+        .matchedTransitionSourcePlease(id: SheetID.autoBackup, in: transitionNamespace)
+    }
+
+    var createBackupButton: some View {
+        Button {
+            showCreateSheet = true
+        } label: {
+            Image(systemName: "plus")
+        }
+        .matchedTransitionSourcePlease(id: SheetID.create, in: transitionNamespace)
+    }
+
+    @available(iOS 26.0, *)
+    @ToolbarContentBuilder
+    var toolbarContentiOS26: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            autoBackupButton
+        }
+
+        ToolbarSpacer(placement: .topBarTrailing)
+
+        ToolbarItem(placement: .topBarTrailing) {
+            createBackupButton
+        }
+    }
+
+    func backupCell(url: URL, backup: Backup) -> some View {
+        Button {
+            targetRestoreBackup = backup
+        } label: {
+            HStack {
+                let date = DateFormatter.localizedString(from: backup.date, dateStyle: .short, timeStyle: .short)
+                if let name = backup.name {
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text(name)
+                                .lineLimit(1)
+                            if backup.automatic ?? false {
+                                automaticBadge
+                            }
+                        }
+                        Text(date)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    HStack {
+                        Text(String(format: NSLocalizedString("BACKUP_%@"), date))
+                            .lineLimit(1)
+                        if backup.automatic ?? false {
+                            automaticBadge
+                        }
+                    }
+                }
+                Spacer()
+                if
+                    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                    let size = attributes[FileAttributeKey.size] as? Int64
+                {
+                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                        .foregroundStyle(.secondary)
+                        .font(.footnote)
+                }
+            }
+        }
+        .foregroundStyle(.primary)
+        .swipeActions {
+            Button(role: .destructive) {
+                onDelete(at: IndexSet(integer: backupUrls.firstIndex(of: url)!))
+            } label: {
+                Label(NSLocalizedString("DELETE"), systemImage: "trash")
+            }
+            Button {
+                targetRenameBackupUrl = url
+                backupName = backup.name ?? ""
+                showRenameAlert = true
+            } label: {
+                Label(NSLocalizedString("RENAME"), systemImage: "pencil")
+            }
+            .tint(.indigo)
+        }
+        .contextMenu {
+            Button {
+                export(url: url)
+            } label: {
+                Label(NSLocalizedString("EXPORT"), systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+
+    var automaticBadge: some View {
+        Text(NSLocalizedString("AUTO"))
+            .lineLimit(1)
+            .foregroundStyle(.primary)
+            .font(.caption)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .background(.blue.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     func onDelete(at offsets: IndexSet) {
         for offset in offsets {
             let url = backupUrls[offset]
-            BackupManager.shared.removeBackup(url: url)
+            Task {
+                await BackupManager.shared.removeBackup(url: url)
+            }
             backups.removeValue(forKey: url)
         }
         backupUrls.remove(atOffsets: offsets)
@@ -167,7 +251,9 @@ extension BackupsView {
     }
 
     func renameBackup(url: URL, name: String) {
-        BackupManager.shared.renameBackup(url: url, name: name)
+        Task {
+            await BackupManager.shared.renameBackup(url: url, name: name)
+        }
     }
 
     func export(url: URL) {

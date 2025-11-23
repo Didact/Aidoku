@@ -228,18 +228,19 @@ struct SettingView: View {
 
     private func auth() async -> Bool {
         let context = LAContext()
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) {
-            return await withCheckedContinuation { continuation in
-                context.evaluatePolicy(
-                    .deviceOwnerAuthenticationWithBiometrics,
-                    localizedReason: NSLocalizedString("AUTH_TO_OPEN")
-                ) { success, _ in
-                    continuation.resume(returning: success)
-                }
-            }
-        } else {
+        let success: Bool
+
+        do {
+            success = try await context.evaluatePolicy(
+                .defaultPolicy,
+                localizedReason: NSLocalizedString("AUTH_TO_OPEN")
+            )
+        } catch {
+            // The error is to be displayed to users, so we can ignore it.
             return false
         }
+
+        return success
     }
 
     private var disabled: Bool {
@@ -631,6 +632,7 @@ extension SettingView {
                     ClearFieldButton {
                         text.wrappedValue = ""
                     }
+                    .buttonStyle(.borderless)
                 }
             }
         }
@@ -648,12 +650,13 @@ extension SettingView {
                 handleValueChange()
             }
         }
-        .confirmationDialog(
+        .disabled(disabled)
+        .confirmationDialogOrAlert(
             value.confirmTitle ?? "",
             isPresented: $showButtonConfirm,
             titleVisibility: value.confirmTitle != nil ? .visible : .hidden
         ) {
-            Button(NSLocalizedString("OK")) {
+            Button(NSLocalizedString("OK"), role: value.destructive ?? false ? .destructive : nil) {
                 handleValueChange()
             }
             Button(NSLocalizedString("CANCEL"), role: .cancel) {}
@@ -662,7 +665,6 @@ extension SettingView {
                 Text(text)
             }
         }
-        .disabled(disabled)
     }
 }
 
@@ -773,8 +775,9 @@ extension SettingView {
             // todo: we can show message from source if they return an error message
             Text(NSLocalizedString("LOGIN_FAILED_TEXT"))
         }
-        .fullScreenCover(isPresented: $showLoginWebView) {
+        .sheet(isPresented: $showLoginWebView) {
             loginWebSheetView(value: value)
+                .interactiveDismissDisabled()
         }
         .onAppear {
             username = SettingsStore.shared.get(key: key + Self.usernameKeySuffix)
@@ -869,10 +872,8 @@ extension SettingView {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
+                    CloseButton {
                         showLoginWebView = false
-                    } label: {
-                        Text(NSLocalizedString("CANCEL")).bold()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -1113,7 +1114,7 @@ extension SettingView {
             ) {
                 if let icon = value.icon {
                     HStack(spacing: 15) {
-                        Self.iconView(source: source, icon: icon, size: 29)
+                        SettingHeaderView.iconView(source: source, icon: SettingHeaderView.Icon.from(icon), size: 29)
 
                         Text(setting.title)
 
@@ -1134,31 +1135,6 @@ extension SettingView {
                 disabled ? disabledOpacity : 1
             }
         }())
-    }
-
-    @ViewBuilder
-    static func iconView(source: AidokuRunner.Source?, icon: PageSetting.Icon, size: CGFloat) -> some View {
-        switch icon {
-            case .system(let name, let color, let inset):
-                Image(systemName: name)
-                    .resizable()
-                    .renderingMode(.template)
-                    .foregroundStyle(.white)
-                    .aspectRatio(contentMode: .fit)
-                    .padding(CGFloat(inset) / 29 * size)
-                    .frame(width: size, height: size)
-                    .background(color.toColor())
-                    .clipShape(RoundedRectangle(cornerRadius: size * 0.225))
-            case .url(let string):
-                SourceImageView(
-                    source: source,
-                    imageUrl: string,
-                    width: size,
-                    height: size,
-                    downsampleWidth: size * 2
-                )
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.225))
-        }
     }
 }
 
@@ -1213,18 +1189,12 @@ struct SettingPageDestination: View {
                 ScrollViewReader { proxy in
                     List {
                         if let icon = value.icon, let subtitle = value.info {
-                            VStack(spacing: 10) {
-                                SettingView.iconView(source: source, icon: icon, size: 60)
-
-                                Text(setting.title)
-                                    .font(.title2.weight(.bold))
-                                Text(subtitle)
-                                    .font(.system(size: 15))
-                                    .lineSpacing(2)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding(.vertical, 10)
-                            .frame(maxWidth: .infinity, alignment: .center)
+                            SettingHeaderView(
+                                source: source,
+                                icon: SettingHeaderView.Icon.from(icon),
+                                title: setting.title,
+                                subtitle: subtitle
+                            )
                             .background(GeometryReader { geo in
                                 let offset = -geo.frame(in: .named(scrollSpace)).minY
                                 Color.clear
@@ -1282,52 +1252,58 @@ extension SettingView {
             }
             stringListBinding = newValues
         }
+        Group {
+            if value.inline ?? false {
+                items
+                Button {
+                    showAddAlert = true
+                } label: {
+                    HStack {
+                        Image(systemName: "plus")
+                        Text(NSLocalizedString("ADD"))
+                    }
+                }
+                .disabled(disabled)
+            } else {
+                NavigationLink {
+                    List {
+                        items
+                    }
+                    .navigationTitle(setting.title)
+                    .toolbar {
+#if !os(macOS)
+                        let placement = ToolbarItemPlacement.topBarTrailing
+#else
+                        let placement = ToolbarItemPlacement.primaryAction
+#endif
+                        ToolbarItem(placement: placement) {
+                            Button {
+                                showAddAlert = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                        }
+                    }
+                } label: {
+                    Text(setting.title)
+                }
+                .disabled(disabled)
+            }
+        }
         .alert(setting.title, isPresented: $showAddAlert) {
             TextField(value.placeholder ?? "", text: $listAddItem)
             Button(NSLocalizedString("CANCEL"), role: .cancel) {
                 listAddItem = ""
             }
+            let is16 = UIDevice.current.systemVersion.hasPrefix("16.")
             Button(NSLocalizedString("ADD")) {
-                stringListBinding.append(listAddItem)
-                listAddItem = ""
-            }
-            .disabled(listAddItem.isEmpty)
-        }
-        if value.inline ?? false {
-            items
-            Button {
-                showAddAlert = true
-            } label: {
-                HStack {
-                    Image(systemName: "plus")
-                    Text(NSLocalizedString("ADD"))
+                if !listAddItem.isEmpty {
+                    stringListBinding.append(listAddItem)
+                    listAddItem = ""
                 }
             }
-            .disabled(disabled)
-        } else {
-            NavigationLink {
-                List {
-                    items
-                }
-                .navigationTitle(setting.title)
-                .toolbar {
-#if !os(macOS)
-                    let placement = ToolbarItemPlacement.topBarTrailing
-#else
-                    let placement = ToolbarItemPlacement.primaryAction
-#endif
-                    ToolbarItem(placement: placement) {
-                        Button {
-                            showAddAlert = true
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                    }
-                }
-            } label: {
-                Text(setting.title)
-            }
-            .disabled(disabled)
+            // the disabled modifier just hides the button on iOS 15/16, so don't use it if we're on those versions
+            .disabled(!is16 && listAddItem.isEmpty)
         }
     }
 }

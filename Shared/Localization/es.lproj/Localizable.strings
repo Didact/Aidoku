@@ -14,7 +14,6 @@
 "LIBRARY" = "Biblioteca";
 "LIBRARY_SEARCH" = "Buscar en la biblioteca";
 "LIBRARY_EMPTY" = "Biblioteca vacía";
-"LIBRARY_ADD_FROM_BROWSE" = "Agrega mangas desde la pestaña de exploración";
 "ADD_TO_LIBRARY" = "Agregar a la Biblioteca";
 "REMOVE_FROM_LIBRARY" = "Eliminar de la Biblioteca";
 "MANGA_INFO" = "Información del manga";
@@ -28,7 +27,6 @@
 // Browse
 "BROWSE" = "Explorar";
 "BROWSE_NO_SOURCES" = "No hay fuentes";
-"BROWSE_NO_SOURCES_TEXT" = "Configura tu lista de fuentes o abre una \nfuente en Aidoku para comenzar";
 "ADDING_SOURCES_GUIDE_BUTTON" = "Guía para agregar fuentes";
 "UPDATES" = "Actualizaciones";
 "INSTALLED" = "Instalado";
@@ -112,7 +110,6 @@
 "SOURCE_LISTS" = "Lista de fuentes";
 "SOURCE_LIST_ADDED" = "Lista de fuentes agregada";
 "SOURCE_LIST_ADDED_TEXT" = "Ahora puedes buscar fuentes externas en la pestaña de exploración.";
-"SHOW_NSFW_SOURCES" = "Mostrar fuentes NSFW";
 "READER" = "Lector";
 "DOWNSAMPLE_IMAGES" = "Reducir resolución de imágenes";
 "BACKUPS" = "Copias de seguridad";
@@ -313,7 +310,7 @@
 "MIGRATION" = "Migración";
 "START_MATCHING" = "Empezar a emparejar";
 "UPLOAD_DATE" = "Fecha de subida";
-"TRACKING" = "Seguimiento";
+"IS_TRACKING" = "Seguimiento";
 "ALL_CHAPTERS_READ" = "Todos los capítulos leídos";
 "DEFAULT_READING_MODE" = "Modo de lectura por defecto";
 "PILLARBOX_ORIENTATION" = "Orientación del Pillarbox";

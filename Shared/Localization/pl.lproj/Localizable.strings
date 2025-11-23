@@ -104,14 +104,12 @@
 "SUPPORT_VIA_KOFI" = "Wesprzyj przez Ko-Fi";
 "REMOVE_DOWNLOADS" = "Usuń pobrane";
 "REMOVE_DOWNLOADS_CONFIRM" = "Usunąć wszystko pobrane?";
-"LIBRARY_ADD_FROM_BROWSE" = "Dodaj mangę z zakładki przeglądaj";
 "FILTER_BY" = "Filtruj według";
 
 // Categories
 "ALL" = "Wszystkie";
 "NONE" = "Żadne";
 "ADDING_SOURCES_GUIDE_BUTTON" = "Jak dodać źródło";
-"BROWSE_NO_SOURCES_TEXT" = "Aby zacząć, skonfiguruj swoją listę źródeł lub\notwórz źródło w Aidoku";
 "BUTTON_GET" = "Weź";
 
 // Source
@@ -214,7 +212,6 @@
 "SOURCE_LIST_ADDED_TEXT" = "Możesz teraz przeglądać zewnętrzne źródła w zakładce Przeglądaj.";
 "LOGGING" = "Logowanie";
 "EXPORT_LOGS" = "Eksportuj dzienniki";
-"SHOW_NSFW_SOURCES" = "Pokaż źródła dla dorosłych";
 "SOURCE_LIST_URL" = "URL źródła";
 "LOCK_HISTORY_TAB" = "Zablokuj zakładkę Historia";
 "DOWNSAMPLE_IMAGES" = "Zmniejsz jakość zdjęć";
@@ -314,7 +311,7 @@
 "FIRST_ALTERNATIVE" = "Pierwsza Alternatywa";
 "DEFAULT_READING_MODE" = "Domyślny Tryb Czytania";
 "BOTH" = "Oba";
-"TRACKING" = "Śledzenie";
+"IS_TRACKING" = "Śledzenie";
 "PILLARBOX" = "Pillarbox";
 "PILLARBOX_ORIENTATION_INFO" = "Orientacja pillarboxa określa, dla jakich orientacji pillarbox powinien być włączony.";
 "PILLARBOX_ORIENTATION" = "Orientacja pillarboxa";

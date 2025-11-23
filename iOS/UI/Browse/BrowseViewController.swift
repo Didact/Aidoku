@@ -54,10 +54,13 @@ class BrowseViewController: BaseTableViewController {
         tableView.sectionFooterHeight = 8
         tableView.separatorStyle = .none
         tableView.backgroundColor = .systemBackground
+        tableView.keyboardDismissMode = .onDrag
+
         refreshControl.addTarget(self, action: #selector(refreshSourceLists(_:)), for: .valueChanged)
         tableView.refreshControl = refreshControl
 
         // empty text
+        emptyStackView.imageSystemName = "globe"
         emptyStackView.title = NSLocalizedString("BROWSE_NO_SOURCES", comment: "")
         emptyStackView.text = NSLocalizedString("BROWSE_NO_SOURCES_TEXT_NEW", comment: "")
         emptyStackView.buttonText = NSLocalizedString("ADDING_SOURCES_GUIDE_BUTTON", comment: "")
@@ -72,6 +75,7 @@ class BrowseViewController: BaseTableViewController {
         updateDataSource()
         Task {
             await viewModel.loadExternalSources()
+            viewModel.loadUpdates()
             updateDataSource()
         }
     }
@@ -92,7 +96,7 @@ class BrowseViewController: BaseTableViewController {
             Task { @MainActor in
                 self.viewModel.loadInstalledSources()
                 self.viewModel.loadPinnedSources()
-                self.viewModel.filterExternalSources()
+                self.viewModel.loadUpdates()
                 if let query = self.navigationItem.searchController?.searchBar.text, !query.isEmpty {
                     self.viewModel.search(query: query)
                 }
@@ -104,22 +108,7 @@ class BrowseViewController: BaseTableViewController {
             guard let self = self else { return }
             Task {
                 await self.viewModel.loadExternalSources()
-                self.updateDataSource()
-            }
-        }
-        // show nsfw sources setting
-        addObserver(forName: "Browse.showNsfwSources") { [weak self] _ in
-            guard let self = self else { return }
-            Task {
-                self.viewModel.filterExternalSources()
-                self.updateDataSource()
-            }
-        }
-        // browse language selection
-        addObserver(forName: "Browse.languages") { [weak self] _ in
-            guard let self = self else { return }
-            Task {
-                self.viewModel.filterExternalSources()
+                self.viewModel.loadUpdates()
                 self.updateDataSource()
             }
         }
@@ -136,7 +125,6 @@ class BrowseViewController: BaseTableViewController {
             Task { @MainActor in
                 self.viewModel.loadInstalledSources()
                 self.viewModel.loadPinnedSources()
-                self.viewModel.filterExternalSources()
                 self.updateDataSource()
             }
         }
@@ -172,6 +160,7 @@ class BrowseViewController: BaseTableViewController {
     @objc func refreshSourceLists(_ refreshControl: UIRefreshControl? = nil) {
         Task {
             await viewModel.loadExternalSources(reload: true)
+            self.viewModel.loadUpdates()
             updateExternalSources()
             refreshControl?.endRefreshing()
         }
@@ -188,6 +177,12 @@ class BrowseViewController: BaseTableViewController {
         let hostingController = UIHostingController(
             rootView: SwiftUINavigationView(rootView: MigrateSourcesView())
         )
+        if #available(iOS 26.0, *) {
+            hostingController.preferredTransition = .zoom { _ in
+                self.navigationItem.rightBarButtonItems?.last
+            }
+        }
+        hostingController.modalPresentationStyle = .pageSheet
         present(hostingController, animated: true)
     }
 
@@ -197,6 +192,12 @@ class BrowseViewController: BaseTableViewController {
                 .ignoresSafeArea() // fixes some weird keyboard clipping stuff
                 .environmentObject(NavigationCoordinator(rootViewController: self))
         )
+        if #available(iOS 26.0, *) {
+            hostingController.preferredTransition = .zoom { _ in
+                self.navigationItem.rightBarButtonItems?.first
+            }
+        }
+        hostingController.modalPresentationStyle = .pageSheet
         present(hostingController, animated: true)
     }
 
@@ -243,14 +244,14 @@ extension BrowseViewController {
         else { return nil }
         var config = SmallSectionHeaderConfiguration()
         switch currentSection {
-        case .updates:
-            config.title = NSLocalizedString("UPDATES", comment: "")
-        case .pinned:
-            config.title = NSLocalizedString("PINNED", comment: "")
-        case .installed:
-            config.title = NSLocalizedString("INSTALLED", comment: "")
-        case .external:
-            config.title = NSLocalizedString("EXTERNAL", comment: "")
+            case .updates:
+                config.title = NSLocalizedString("UPDATES", comment: "")
+            case .pinned:
+                config.title = NSLocalizedString("PINNED", comment: "")
+            case .installed:
+                config.title = NSLocalizedString("INSTALLED", comment: "")
+            case .external:
+                config.title = NSLocalizedString("EXTERNAL", comment: "")
         }
         cell.contentConfiguration = config
         return cell
@@ -301,45 +302,45 @@ extension BrowseViewController {
                 }
             }
             switch self.sectionIdentifier(for: indexPath.section) {
-            // Context menu items for a source in Installed section of the table
-            case .installed:
-                actions = [
-                    UIAction(
-                        title: NSLocalizedString("PIN", comment: ""),
-                        image: UIImage(systemName: "pin")
-                    ) { _ in
-                        SourceManager.shared.pin(source: source)
-                        self.viewModel.loadPinnedSources()
-                        self.updateDataSource()
-                    },
-                    uninstallAction
-                ]
-            // Context menu items for a source in Pinned section of the table
-            case .pinned:
-                actions = [
-                    UIMenu(title: "", options: .displayInline, children: [
+                // Context menu items for a source in Installed section of the table
+                case .installed:
+                    actions = [
                         UIAction(
-                            title: NSLocalizedString("REORDER", comment: ""),
-                            image: UIImage(systemName: "shuffle")
+                            title: NSLocalizedString("PIN", comment: ""),
+                            image: UIImage(systemName: "pin")
                         ) { _ in
-                            // Let user re-order sources inside the pinned section.
-                            tableView.setEditing(true, animated: true)
-                            self.updateNavbar()
-                        }
-                    ]),
-                    UIAction(
-                        title: NSLocalizedString("UNPIN", comment: ""),
-                        image: UIImage(systemName: "pin.slash")
-                    ) { _ in
-                        // Remove source from the pinned array, recreate the installed source list and update the table.
-                        SourceManager.shared.unpin(source: source)
-                        self.viewModel.loadPinnedSources()
-                        self.updateDataSource()
-                    },
-                    uninstallAction
-                ]
-            default:
-                break
+                            SourceManager.shared.pin(source: source)
+                            self.viewModel.loadPinnedSources()
+                            self.updateDataSource()
+                        },
+                        uninstallAction
+                    ]
+                // Context menu items for a source in Pinned section of the table
+                case .pinned:
+                    actions = [
+                        UIMenu(title: "", options: .displayInline, children: [
+                            UIAction(
+                                title: NSLocalizedString("REORDER", comment: ""),
+                                image: UIImage(systemName: "shuffle")
+                            ) { _ in
+                                // Let user re-order sources inside the pinned section.
+                                tableView.setEditing(true, animated: true)
+                                self.updateNavbar()
+                            }
+                        ]),
+                        UIAction(
+                            title: NSLocalizedString("UNPIN", comment: ""),
+                            image: UIImage(systemName: "pin.slash")
+                        ) { _ in
+                            // Remove source from the pinned array, recreate the installed source list and update the table.
+                            SourceManager.shared.unpin(source: source)
+                            self.viewModel.loadPinnedSources()
+                            self.updateDataSource()
+                        },
+                        uninstallAction
+                    ]
+                default:
+                    break
             }
             return UIMenu(title: "", children: actions)
         }
@@ -528,6 +529,9 @@ extension BrowseViewController {
                 action: #selector(openAddSourcePage)
             )
             addSourceBarButton.title = NSLocalizedString("ADD_SOURCE")
+            if #available(iOS 26.0, *) {
+                addSourceBarButton.sharesBackground = false
+            }
 
             let migrateSourcesBarButton = UIBarButtonItem(
                 image: UIImage(systemName: "arrow.left.arrow.right"),
@@ -536,6 +540,9 @@ extension BrowseViewController {
                 action: #selector(openMigrateSourcePage)
             )
             migrateSourcesBarButton.title = NSLocalizedString("MIGRATE_SOURCES")
+            if #available(iOS 26.0, *) {
+                migrateSourcesBarButton.sharesBackground = false
+            }
 
             navigationItem.rightBarButtonItems = [
                 addSourceBarButton,
