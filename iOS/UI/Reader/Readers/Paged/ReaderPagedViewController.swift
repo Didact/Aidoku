@@ -7,6 +7,7 @@
 
 import AidokuRunner
 import UIKit
+import VisionKit
 
 class ReaderPagedViewController: BaseObservingViewController {
 
@@ -29,17 +30,17 @@ class ReaderPagedViewController: BaseObservingViewController {
     var pageViewControllers: [ReaderPageViewController] = []
     var currentPage = 0
 
-    var usesDoublePages = false
-    var usesAutoPageLayout = false
-    var isolateFirstPageEnabled = UserDefaults.standard.bool(forKey: "Reader.pagedIsolateFirstPage")
-    var splitWideImages = UserDefaults.standard.bool(forKey: "Reader.splitWideImages")
-    var isolatedPages: Set<Int> = []
-    lazy var pagesToPreload = UserDefaults.standard.integer(forKey: "Reader.pagesToPreload")
+    private var usesDoublePages = false
+    private var usesAutoPageLayout = false
+    private var isolateFirstPageEnabled = UserDefaults.standard.bool(forKey: "Reader.pagedIsolateFirstPage")
+    private var splitWideImages = UserDefaults.standard.bool(forKey: "Reader.splitWideImages")
+    private var isolatedPages: Set<Int> = []
+    private lazy var pagesToPreload = UserDefaults.standard.integer(forKey: "Reader.pagesToPreload")
 
     // Split pages tracking
-    var splitPages: [Int: [Page]] = [:]
-    var previousPreviewSplitPages: [Page]?
-    var nextPreviewSplitPages: [Page]?
+    private var splitPages: [Int: [Page]] = [:]
+    private var previousPreviewSplitPages: [Page]?
+    private var nextPreviewSplitPages: [Page]?
 
     // Track navigation direction for smart split page selection
     private var lastPageIndex = 0
@@ -121,6 +122,7 @@ class ReaderPagedViewController: BaseObservingViewController {
         }
         addObserver(forName: UIApplication.didReceiveMemoryWarningNotification.rawValue) { [weak self] _ in
             // clear pages that aren't in the preload range if we get a memory warning
+            LogManager.logger.warn("Received memory warning")
             guard
                 let self,
                 let viewController = pageViewController.viewControllers?.first,
@@ -145,6 +147,13 @@ class ReaderPagedViewController: BaseObservingViewController {
         }
         addObserver(forName: "Reader.splitWideImages", using: refreshSplitPages)
         addObserver(forName: "Reader.reverseSplitOrder", using: refreshSplitPages)
+
+        addObserver(forName: .readerShowingBars) { [weak self] _ in
+            self?.setLiveTextButtonHidden(false)
+        }
+        addObserver(forName: .readerHidingBars) { [weak self] _ in
+            self?.setLiveTextButtonHidden(true)
+        }
     }
 
     func updatePageLayout() {
@@ -208,7 +217,7 @@ extension ReaderPagedViewController {
             if let previousChapterPreviewController {
                 pageViewControllers.append(previousChapterPreviewController)
             } else {
-                let page = ReaderPageViewController(type: .page)
+                let page = ReaderPageViewController(type: .page, delegate: delegate)
                 page.pageView?.imageView.addInteraction(UIContextMenuInteraction(delegate: self))
                 if let previousPreviewSplitPages, let splitPage = previousPreviewSplitPages.last {
                     // if we have split pages for the preview, use the last split page
@@ -235,7 +244,7 @@ extension ReaderPagedViewController {
         }
 
         // previous chapter transition page
-        let previousInfoController = ReaderPageViewController(type: .info(.previous))
+        let previousInfoController = ReaderPageViewController(type: .info(.previous), delegate: delegate)
         let sourceId = viewModel.source?.key ?? viewModel.manga.sourceKey
         previousInfoController.currentChapter = chapter.toOld(sourceId: sourceId, mangaId: viewModel.manga.key)
         previousInfoController.previousChapter = previousChapter?.toOld(sourceId: sourceId, mangaId: viewModel.manga.key)
@@ -248,7 +257,7 @@ extension ReaderPagedViewController {
         if let firstPageController {
             if let splitPageArray = splitPages[1] {
                 for splitPage in splitPageArray {
-                    let page = ReaderPageViewController(type: .page)
+                    let page = ReaderPageViewController(type: .page, delegate: delegate)
                     page.pageView?.imageView.addInteraction(UIContextMenuInteraction(delegate: self))
                     page.setPage(splitPage, sourceId: viewModel.source?.key ?? viewModel.manga.sourceKey)
                     pageViewControllers.append(page)
@@ -265,7 +274,7 @@ extension ReaderPagedViewController {
             if let splitPageArray = splitPages[originalPageIndex] {
                 // Create controllers for split pages
                 for splitPage in splitPageArray {
-                    let page = ReaderPageViewController(type: .page)
+                    let page = ReaderPageViewController(type: .page, delegate: delegate)
                     page.pageView?.imageView.addInteraction(UIContextMenuInteraction(delegate: self))
                     // Set the split page directly
                     page.setPage(splitPage, sourceId: viewModel.source?.key ?? viewModel.manga.sourceKey)
@@ -273,7 +282,7 @@ extension ReaderPagedViewController {
                 }
             } else {
                 // Create normal page controller
-                let page = ReaderPageViewController(type: .page)
+                let page = ReaderPageViewController(type: .page, delegate: delegate)
                 page.pageView?.imageView.addInteraction(UIContextMenuInteraction(delegate: self))
                 // Only set aspect ratio callback for double page layout
                 if usesDoublePages {
@@ -296,7 +305,7 @@ extension ReaderPagedViewController {
         if let lastPageController {
             if let splitPageArray = splitPages[viewModel.pages.count] {
                 for splitPage in splitPageArray {
-                    let page = ReaderPageViewController(type: .page)
+                    let page = ReaderPageViewController(type: .page, delegate: delegate)
                     page.pageView?.imageView.addInteraction(UIContextMenuInteraction(delegate: self))
                     page.setPage(splitPage, sourceId: viewModel.source?.key ?? viewModel.manga.sourceKey)
                     pageViewControllers.append(page)
@@ -309,7 +318,7 @@ extension ReaderPagedViewController {
         nextChapter = delegate?.getNextChapter()
 
         // next chapter transition page
-        let nextInfoController = ReaderPageViewController(type: .info(.next))
+        let nextInfoController = ReaderPageViewController(type: .info(.next), delegate: delegate)
         nextInfoController.currentChapter = chapter.toOld(sourceId: sourceId, mangaId: viewModel.manga.key)
         nextInfoController.nextChapter = nextChapter?.toOld(sourceId: sourceId, mangaId: viewModel.manga.key)
         pageViewControllers.append(nextInfoController)
@@ -319,7 +328,7 @@ extension ReaderPagedViewController {
             if let nextChapterPreviewController {
                 pageViewControllers.append(nextChapterPreviewController)
             } else {
-                let page = ReaderPageViewController(type: .page)
+                let page = ReaderPageViewController(type: .page, delegate: delegate)
                 page.pageView?.imageView.addInteraction(UIContextMenuInteraction(delegate: self))
                 if let nextPreviewSplitPages, let splitPage = nextPreviewSplitPages.first {
                     page.setPage(splitPage, sourceId: viewModel.source?.key ?? viewModel.manga.sourceKey)
@@ -616,6 +625,31 @@ extension ReaderPagedViewController {
             refreshChapter(startPage: targetPage)
         }
     }
+
+    private func setLiveTextButtonHidden(_ hidden: Bool) {
+        pageViewController.viewControllers?.forEach {
+            let pageControllers: [ReaderPageViewController]
+            let zoomScale: CGFloat?
+            if let pageController = $0 as? ReaderPageViewController {
+                pageControllers = [pageController]
+                zoomScale = pageController.zoomView?.zoomScale
+            } else if let doublePageController = $0 as? ReaderDoublePageViewController {
+                pageControllers = [doublePageController.firstPageController, doublePageController.secondPageController]
+                zoomScale = doublePageController.zoomView.zoomScale
+            } else {
+                pageControllers = []
+                zoomScale = nil
+            }
+            for pageController in pageControllers {
+                if hidden {
+                    pageController.pageView?.setLiveTextHidden(true)
+                } else {
+                    guard let zoomScale else { return }
+                    pageController.pageView?.setLiveTextHidden(zoomScale != 1)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Reader Delegate
@@ -749,6 +783,7 @@ extension ReaderPagedViewController: UIPageViewControllerDelegate {
         previousViewControllers: [UIViewController],
         transitionCompleted completed: Bool
     ) {
+        setLiveTextButtonHidden(delegate?.barsHidden ?? false)
         guard
             completed,
             let viewController = pageViewController.viewControllers?.first,
@@ -825,6 +860,7 @@ extension ReaderPagedViewController: UIPageViewControllerDelegate {
         _ pageViewController: UIPageViewController,
         willTransitionTo pendingViewControllers: [UIViewController]
     ) {
+        setLiveTextButtonHidden(true)
         for controller in pendingViewControllers {
             if let controller = controller as? ReaderDoublePageViewController {
                 if let first = getIndex(of: controller, pos: .first) {
@@ -930,6 +966,14 @@ extension ReaderPagedViewController: UIContextMenuInteractionDelegate {
             let pageView = interaction.view as? UIImageView,
             pageView.image != nil
         else {
+            return nil
+        }
+        // disable when live text highlighting is active
+        if
+            #available(iOS 16.0, *),
+            let imageAnalaysisInteraction = pageView.interactions.first as? ImageAnalysisInteraction,
+            imageAnalaysisInteraction.selectableItemsHighlighted
+        {
             return nil
         }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil, actionProvider: { _ in

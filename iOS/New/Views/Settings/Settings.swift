@@ -6,7 +6,7 @@
 //
 
 import AidokuRunner
-import Foundation
+import UIKit
 
 enum Settings {
     static let settings: [Setting] = [
@@ -89,6 +89,15 @@ enum Settings {
                     items: [],
                     inlineTitle: true,
                     icon: .system(name: "info.circle.fill", color: "gray", inset: 6)
+                ))
+            ),
+            .init(
+                key: "Insights",
+                title: NSLocalizedString("INSIGHTS"),
+                value: .page(.init(
+                    items: [],
+                    inlineTitle: true,
+                    icon: .system(name: "chart.bar.xaxis", color: "indigo")
                 ))
             ),
             .init(
@@ -175,18 +184,12 @@ extension Settings {
                 value: .toggle(.init())
             ),
             .init(
-                key: "Library.pinManga",
-                title: NSLocalizedString("PIN_MANGA"),
-                value: .toggle(.init())
-            ),
-            .init(
-                key: "Library.pinMangaType",
-                title: NSLocalizedString("PIN_MANGA_TYPE"),
-                requires: "Library.pinManga",
-                value: .segment(.init(options: [
-                    NSLocalizedString("PIN_MANGA_UNREAD"),
-                    NSLocalizedString("PIN_MANGA_UPDATED")
-                ]))
+                key: "Library.pinTitles",
+                title: NSLocalizedString("PIN_TITLES"),
+                value: .select(.init(
+                    values: LibraryViewModel.PinType.allCases.map(\.rawValue),
+                    titles: LibraryViewModel.PinType.allCases.map(\.title)
+                ))
             )
         ]))),
         .init(value: .group(.init(items: [
@@ -271,7 +274,7 @@ extension Settings {
                 value: .toggle(.init())
             )
         ]
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !ProcessInfo.processInfo.isMacCatalystApp {
             return .init(
                 title: NSLocalizedString("LIBRARY_UPDATING"),
                 value: .group(.init(
@@ -338,6 +341,11 @@ extension Settings {
                 value: .toggle(.init())
             ),
             .init(
+                key: "Reader.liveText",
+                title: NSLocalizedString("LIVE_TEXT"),
+                value: .toggle(.init())
+            ),
+            .init(
                 key: "Reader.backgroundColor",
                 title: NSLocalizedString("READER_BG_COLOR"),
                 value: .select(.init(
@@ -349,21 +357,28 @@ extension Settings {
                         NSLocalizedString("READER_BG_COLOR_BLACK")
                     ]
                 ))
-            ),
-            .init(
-                key: "Reader.orientation",
-                title: NSLocalizedString("READER_ORIENTATION"),
-                notification: "Reader.orientation",
-                value: .select(.init(
-                    values: ["device", "portrait", "landscape"],
-                    titles: [
-                        NSLocalizedString("FOLLOW_DEVICE"),
-                        NSLocalizedString("PORTRAIT"),
-                        NSLocalizedString("LANDSCAPE")
-                    ]
-                ))
             )
-        ]))),
+        ] + {
+            if UIDevice.current.userInterfaceIdiom != .pad {
+                [
+                    .init(
+                        key: "Reader.orientation",
+                        title: NSLocalizedString("READER_ORIENTATION"),
+                        notification: "Reader.orientation",
+                        value: .select(.init(
+                            values: ["device", "portrait", "landscape"],
+                            titles: [
+                                NSLocalizedString("FOLLOW_DEVICE"),
+                                NSLocalizedString("PORTRAIT"),
+                                NSLocalizedString("LANDSCAPE")
+                            ]
+                        ))
+                    )
+                ]
+            } else {
+                []
+            }
+        }()))),
         .init(
             title: NSLocalizedString("TAP_ZONES"),
             value: .group(.init(items: [
@@ -477,7 +492,7 @@ extension Settings {
                         key: "Reader.pillarboxAmount",
                         title: NSLocalizedString("PILLARBOX_AMOUNT"),
                         requires: "Reader.pillarbox",
-                        value: .stepper(.init(minimumValue: 0, maximumValue: 100, stepValue: 5))
+                        value: .stepper(.init(minimumValue: 5, maximumValue: 95, stepValue: 5))
                     ),
                     .init(
                         key: "Reader.pillarboxOrientation",
@@ -569,7 +584,7 @@ extension Settings {
 
 extension Settings {
     static let downloadSettings: [Setting] = {
-        let baseItems: [Setting] = [
+        var baseItems: [Setting] = [
             .init(
                 key: "Library.downloadOnlyOnWifi",
                 title: NSLocalizedString("ONLY_DOWNLOAD_ON_WIFI"),
@@ -584,18 +599,27 @@ extension Settings {
                 key: "Downloads.compress",
                 title: NSLocalizedString("COMPRESS_DOWNLOADS"),
                 value: .toggle(.init())
+            ),
+            .init(
+                key: "Downloads.parallel",
+                title: NSLocalizedString("PARALLEL_DOWNLOADS"),
+                value: .toggle(.init())
             )
         ]
-        if #available(iOS 26.0, *) {
-            return baseItems + [
+        if #available(iOS 26.0, *), !ProcessInfo.processInfo.isMacCatalystApp {
+            baseItems.append(
                 .init(
                     key: "Downloads.background",
                     title: NSLocalizedString("BACKGROUND_DOWNLOADING"),
                     value: .toggle(.init())
                 )
-            ]
-        } else {
-            return baseItems
+            )
         }
+        return [
+            .init(
+                title: NSLocalizedString("SETTINGS"),
+                value: .group(.init(items: baseItems))
+            )
+        ]
     }()
 }

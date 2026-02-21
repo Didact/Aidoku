@@ -18,10 +18,7 @@
 "ADD_TO_LIBRARY" = "أضف إلى المكتبة";
 "REMOVE_FROM_LIBRARY" = "إزالة من المكتبة";
 "MANGA_INFO" = "معلومات المانجا";
-"PIN_MANGA" = "تثبيت المانغا";
-"PIN_MANGA_TYPE" = "نوع التثبيت";
-"PIN_MANGA_UNREAD" = "غير مقروء";
-"PIN_MANGA_UPDATED" = "محدَث";
+"PIN_UNREAD" = "غير مقروء";
 "SORT_BY" = "ترتيب حسب";
 "TITLE" = "العنوان";
 "LAST_OPENED" = "آخر عملية فتح";
@@ -154,7 +151,6 @@
 "CATEGORY_ADD" = "إضافة تصنيف";
 "CATEGORY_ADD_TEXT" = "أدخل عنوان التصنيف الجديد التي تريد إنشائه.";
 "DEFAULT_CATEGORY" = "التصنيف الافتراضي";
-"CATEGORY_TITLE" = "عنوان التصنيف";
 "ALWAYS_ASK" = "اسأل دائماً";
 "LANGUAGES" = "اللغات";
 "BUILD" = "بناء";

@@ -32,7 +32,6 @@ struct SettingView: View {
     @State private var toggleValue: Bool
 
     @State private var valueChangeTask: Task<Void, Never>?
-    @State private var showAddAlert = false
     @State private var showLoginAlert = false
     @State private var showLogoutAlert = false
     @State private var showLoginFailAlert = false
@@ -41,9 +40,9 @@ struct SettingView: View {
     @State private var showButtonConfirm = false
     @State private var showSafari = false
     @State private var loginCookies: [String: String] = [:]
+    @State private var loginLocalStorage: [String: String] = [:]
     @State private var username = ""
     @State private var password = ""
-    @State private var listAddItem = ""
     @State private var skippedFirst = false
     @State private var loginLoading = false
     @State private var loginReload = false
@@ -137,7 +136,7 @@ struct SettingView: View {
 
     var body: some View {
         content
-            .id(key(setting.key))
+            .id(setting.type.requiresKey ? key(setting.key) : String(setting.hashValue))
             .onReceive(userDefaultsObserver.$observedValues) { _ in
                 // skip the initial value load
                 if !skippedFirst {
@@ -221,8 +220,18 @@ struct SettingView: View {
                 }
             }
             refresh()
+
+            let value: Any? = switch setting.value {
+                case .select: stringListBinding.first
+                case .multiselect: stringListBinding
+                case .toggle: toggleValue
+                case .stepper: doubleBinding
+                case .segment: SettingsStore.shared.get(key: key(setting.key)) as Int
+                case .editableList: stringListBinding
+                default: nil
+            }
             let notificationName = setting.notification ?? key(setting.key)
-            NotificationCenter.default.post(name: .init(notificationName), object: nil)
+            NotificationCenter.default.post(name: .init(notificationName), object: value)
         }
     }
 
@@ -317,6 +326,7 @@ extension SettingView {
             ) {
                 HStack {
                     Text(setting.title)
+                        .lineLimit(1)
                     Spacer()
                     if let item = stringListBinding.first {
                         let title = value.values
@@ -324,6 +334,7 @@ extension SettingView {
                             .flatMap { value.titles?[safe: $0] }
                         Text(title ?? item)
                             .foregroundStyle(Color.secondaryLabel)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -412,6 +423,7 @@ extension SettingView {
                 isActive: $pageIsActive
             )
             .environment(\.isEnabled, true) // remove double disabled effect
+            .lineLimit(1)
         }
         .foregroundStyle(.primary)
         .disabled(disabled)
@@ -533,6 +545,7 @@ extension SettingView {
             if value.maximumValue >= value.minimumValue {
                 Text(String(format: "%g", doubleBinding))
                     .foregroundStyle(Color.secondaryLabel)
+                    .lineLimit(1)
                 Stepper(
                     "",
                     value: $doubleBinding,
@@ -558,6 +571,7 @@ extension SettingView {
             Text(setting.title)
                 .opacity(disabled ? disabledOpacity : 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
             Spacer()
             Picker("", selection: SettingsStore.shared.binding(key: key(setting.key)) as Binding<Int>) {
                 ForEach(value.options.indices, id: \.self) { offset in
@@ -607,6 +621,7 @@ extension SettingView {
             if !setting.title.isEmpty {
                 Text(setting.title)
                     .opacity(disabled ? disabledOpacity : 1)
+                    .lineLimit(1)
                 Spacer()
             }
             let text: Binding<String> = SettingsStore.shared.binding(key: key(setting.key))
@@ -650,6 +665,7 @@ extension SettingView {
                 handleValueChange()
             }
         }
+        .lineLimit(1)
         .disabled(disabled)
         .confirmationDialogOrAlert(
             value.confirmTitle ?? "",
@@ -675,6 +691,7 @@ extension SettingView {
         Button(setting.title) {
             showSafari = true
         }
+        .lineLimit(1)
         .fullScreenCover(isPresented: $showSafari) {
             SafariView(url: Binding.constant(URL(string: value.url)))
                 .ignoresSafeArea()
@@ -689,6 +706,7 @@ extension SettingView {
     static let passwordKeySuffix = ".password"
     static let cookieKeysKeySuffix = ".keys"
     static let cookieValuesKeySuffix = ".values"
+    static let localStoragePrefix = ".ls."
 
     @ViewBuilder
     func loginView(value: LoginSetting) -> some View {
@@ -718,6 +736,7 @@ extension SettingView {
                     .frame(width: 20, height: 20)
             } else {
                 Text(loggedIn ? value.logoutTitle ?? NSLocalizedString("LOGOUT") : setting.title)
+                    .lineLimit(1)
             }
         }
         .disabled(disabled)
@@ -762,6 +781,12 @@ extension SettingView {
                 SettingsStore.shared.remove(key: key + Self.passwordKeySuffix)
                 SettingsStore.shared.remove(key: key + Self.cookieKeysKeySuffix)
                 SettingsStore.shared.remove(key: key + Self.cookieValuesKeySuffix)
+                // remove local storage
+                if let localStorageKeys = value.localStorageKeys {
+                    for lsKey in localStorageKeys {
+                        SettingsStore.shared.remove(key: key + Self.localStoragePrefix + lsKey)
+                    }
+                }
                 SettingsStore.shared.remove(key: key)
                 username = ""
                 password = ""
@@ -866,8 +891,14 @@ extension SettingView {
         PlatformNavigationStack {
             Group {
                 if let url = value.url.flatMap({ URL(string: $0) }) {
-                    WebView(url, cookies: $loginCookies, reloadToggle: $loginReload)
-                        .edgesIgnoringSafeArea(.bottom)
+                    WebView(
+                        url,
+                        localStorageKeys: value.localStorageKeys ?? [],
+                        cookies: $loginCookies,
+                        localStorage: $loginLocalStorage,
+                        reloadToggle: $loginReload
+                    )
+                    .edgesIgnoringSafeArea(.bottom)
                 }
             }
             .toolbar {
@@ -915,6 +946,12 @@ extension SettingView {
                     }
                 } else {
                     commit()
+                }
+            }
+            .onChange(of: loginLocalStorage) { newValue in
+                let key = key(setting.key)
+                for (lsKey, lsValue) in newValue {
+                    SettingsStore.shared.set(key: key + Self.localStoragePrefix + lsKey, value: lsValue)
                 }
             }
         }
@@ -1117,11 +1154,13 @@ extension SettingView {
                         SettingHeaderView.iconView(source: source, icon: SettingHeaderView.Icon.from(icon), size: 29)
 
                         Text(setting.title)
+                            .lineLimit(1)
 
                         Spacer()
                     }
                 } else {
                     Text(setting.title)
+                        .lineLimit(1)
                 }
             }
             .environment(\.isEnabled, true) // remove double disabled effect
@@ -1140,7 +1179,7 @@ extension SettingView {
 
 private struct ScrollOffsetPreferenceKey: PreferenceKey {
     typealias Value = CGFloat
-    static var defaultValue = CGFloat.zero
+    static var defaultValue: CGFloat { .zero }
     static func reduce(value: inout Value, nextValue: () -> Value) {
         value += nextValue()
     }
@@ -1256,7 +1295,7 @@ extension SettingView {
             if value.inline ?? false {
                 items
                 Button {
-                    showAddAlert = true
+                    showListAddPrompt(value: value)
                 } label: {
                     HStack {
                         Image(systemName: "plus")
@@ -1278,7 +1317,7 @@ extension SettingView {
 #endif
                         ToolbarItem(placement: placement) {
                             Button {
-                                showAddAlert = true
+                                showListAddPrompt(value: value)
                             } label: {
                                 Image(systemName: "plus")
                             }
@@ -1290,21 +1329,29 @@ extension SettingView {
                 .disabled(disabled)
             }
         }
-        .alert(setting.title, isPresented: $showAddAlert) {
-            TextField(value.placeholder ?? "", text: $listAddItem)
-            Button(NSLocalizedString("CANCEL"), role: .cancel) {
-                listAddItem = ""
-            }
-            let is16 = UIDevice.current.systemVersion.hasPrefix("16.")
-            Button(NSLocalizedString("ADD")) {
-                if !listAddItem.isEmpty {
-                    stringListBinding.append(listAddItem)
-                    listAddItem = ""
+    }
+
+    func showListAddPrompt(value: EditableListSetting) {
+        var alertTextField: UITextField?
+        (UIApplication.shared.delegate as? AppDelegate)?.presentAlert(
+            title: setting.title,
+            actions: [
+                UIAlertAction(title: NSLocalizedString("CANCEL"), style: .cancel),
+                UIAlertAction(title: NSLocalizedString("ADD"), style: .default) { _ in
+                    guard let text = alertTextField?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
+                    stringListBinding.append(text)
                 }
-            }
-            // the disabled modifier just hides the button on iOS 15/16, so don't use it if we're on those versions
-            .disabled(!is16 && listAddItem.isEmpty)
-        }
+            ],
+            textFieldHandlers: [
+                { textField in
+                    textField.placeholder = value.placeholder ?? ""
+                    textField.autocorrectionType = .no
+                    textField.returnKeyType = .done
+                    alertTextField = textField
+                }
+            ],
+            textFieldDisablesLastActionWhenEmpty: true
+        )
     }
 }
 

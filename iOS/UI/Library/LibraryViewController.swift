@@ -155,7 +155,7 @@ class LibraryViewController: OldMangaCollectionViewController {
         refreshControl.addTarget(self, action: #selector(updateLibraryRefresh(refreshControl:)), for: .valueChanged)
         collectionView.refreshControl = refreshControl
 
-        collectionView.allowsMultipleSelection = true
+        collectionView.allowsMultipleSelection = !ProcessInfo.processInfo.isMacCatalystApp
         collectionView.allowsSelectionDuringEditing = true
 
         // header view
@@ -319,16 +319,28 @@ class LibraryViewController: OldMangaCollectionViewController {
                 self.updateDataSource()
             }
         }
-        addObserver(forName: .updateChapters) { [weak self] notification in
-            if let id = notification.object as? MangaIdentifier {
-                Task {
-                    await self?.viewModel.fetchUnreads(for: id)
-                    self?.updateDataSource()
+        addObserver(forName: .updateManga) { [weak self] notification in
+            guard let self, let id = notification.object as? MangaIdentifier else { return }
+            Task {
+                let libraryReloaded = if !UserDefaults.standard.bool(forKey: "General.incognitoMode") {
+                    await self.viewModel.mangaOpened(sourceId: id.sourceKey, mangaId: id.mangaKey)
+                } else {
+                    false
                 }
+                if !libraryReloaded {
+                    if self.viewModel.sortMethod == .lastUpdated || self.viewModel.sortMethod == .lastChapter {
+                        // if sorting by updated or last chapter, or pinning updated, we need to reload the library to update the order
+                        await self.viewModel.loadLibrary()
+                    } else {
+                        // otherwise, just update the unread count (in case chapters were added)
+                        await self.viewModel.fetchUnreads(for: id)
+                    }
+                }
+                self.updateDataSource()
             }
         }
 
-        let updatePinType: (Notification) -> Void = { [weak self] _ in
+        addObserver(forName: .pinTitles) { [weak self] _ in
             guard let self else { return }
             self.viewModel.pinType = self.viewModel.getPinType()
             Task { @MainActor in
@@ -336,8 +348,6 @@ class LibraryViewController: OldMangaCollectionViewController {
                 self.updateDataSource()
             }
         }
-        addObserver(forName: "Library.pinManga", using: updatePinType)
-        addObserver(forName: "Library.pinMangaType", using: updatePinType)
 
         // refresh badges
         addObserver(forName: "Library.unreadChapterBadges") { [weak self] _ in
@@ -453,6 +463,10 @@ class LibraryViewController: OldMangaCollectionViewController {
         super.setEditing(editing, animated: animated)
         updateNavbarItems()
         updateToolbar()
+
+        if ProcessInfo.processInfo.isMacCatalystApp {
+            collectionView.allowsMultipleSelection = editing
+        }
 
         for cell in collectionView.visibleCells {
             if let cell = cell as? MangaGridCell {
@@ -641,7 +655,8 @@ extension LibraryViewController {
                     }
                 }
             ] : [],
-            continueActionName: NSLocalizedString("REMOVE_FROM_LIBRARY")
+            continueActionName: NSLocalizedString("REMOVE_FROM_LIBRARY"),
+            sourceItem: toolbarItems?.first
         ) {
             Task {
                 let identifiers = selectedItems.compactMap { self.dataSource.itemIdentifier(for: $0) }
@@ -887,7 +902,7 @@ extension LibraryViewController {
                 }
             }
         }
-        return options.joined(separator: ", ")
+        return options.joined(separator: NSLocalizedString("FILTER_SEPARATOR"))
     }
 
     @available(iOS 26.0, *)
@@ -911,7 +926,7 @@ extension LibraryViewController {
         contextMenuInteraction.updateVisibleMenu { menu in
             if menu.title == NSLocalizedString("BUTTON_FILTER") {
                 updateFilterSubmenu(menu)
-            } else if menu.title == NSLocalizedString("SOURCES") {
+            } else if menu.title == LibraryViewModel.FilterMethod.source.title {
                 menu.replacingChildren(self.viewModel.sourceKeys.map { key in
                     UIAction(
                         title: SourceManager.shared.source(for: key)?.name ?? key,
@@ -919,6 +934,16 @@ extension LibraryViewController {
                         state: self.filterState(for: .source, value: key)
                     ) { [weak self] _ in
                         self?.toggleFilter(method: .source, value: key)
+                    }
+                })
+            } else if menu.title == LibraryViewModel.FilterMethod.contentRating.title {
+                menu.replacingChildren(MangaContentRating.allCases.map { rating in
+                    UIAction(
+                        title: rating.title,
+                        attributes: .keepsMenuPresented,
+                        state: self.filterState(for: .contentRating, value: rating.stringValue)
+                    ) { [weak self] _ in
+                        self?.toggleFilter(method: .contentRating, value: rating.stringValue)
                     }
                 })
             } else {
@@ -1042,6 +1067,19 @@ extension LibraryViewController {
                     }
                 } + [
                     UIMenu(
+                        title: LibraryViewModel.FilterMethod.contentRating.title,
+                        image: LibraryViewModel.FilterMethod.contentRating.image,
+                        children: MangaContentRating.allCases.map { rating in
+                            UIAction(
+                                title: rating.title,
+                                attributes: attributes,
+                                state: self.filterState(for: .contentRating, value: rating.stringValue)
+                            ) { [weak self] _ in
+                                self?.toggleFilter(method: .contentRating, value: rating.stringValue)
+                            }
+                        }
+                    ),
+                    UIMenu(
                         title: LibraryViewModel.FilterMethod.source.title,
                         image: LibraryViewModel.FilterMethod.source.image,
                         children: self.viewModel.sourceKeys.map { key in
@@ -1112,6 +1150,15 @@ extension LibraryViewController: MangaListSelectionHeaderDelegate {
 
 // MARK: - Collection View Delegate
 extension LibraryViewController {
+    // support two finger drag to select
+    func collectionView(_ collectionView: UICollectionView, shouldBeginMultipleSelectionInteractionAt indexPath: IndexPath) -> Bool {
+        true
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didBeginMultipleSelectionInteractionAt indexPath: IndexPath) {
+        setEditing(true, animated: true)
+    }
+
     override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard let info = dataSource.itemIdentifier(for: indexPath) else { return }
 
@@ -1216,15 +1263,10 @@ extension LibraryViewController {
         }
     }
 
-    // hide highlighting when editing
+    // don't highlighting when selecting during editing
     override func collectionView(_ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath) {
         guard !isEditing else { return }
         super.collectionView(collectionView, didHighlightItemAt: indexPath)
-    }
-
-    override func collectionView(_ collectionView: UICollectionView, didUnhighlightItemAt indexPath: IndexPath) {
-        guard !isEditing else { return }
-        super.collectionView(collectionView, didUnhighlightItemAt: indexPath)
     }
 
     private func mangaInfo(at path: IndexPath) -> MangaInfo {
@@ -1314,7 +1356,7 @@ extension LibraryViewController {
             bottomMenuChildren.append(UIMenu(title: NSLocalizedString("MARK_ALL"), image: nil, children: [
                 // read chapters
                 UIAction(title: NSLocalizedString("READ"), image: UIImage(systemName: "eye")) { _ in
-                    self.showLoadingIndicator()
+                    (UIApplication.shared.delegate as? AppDelegate)?.showLoadingIndicator()
 
                     Task {
                         for manga in mangaInfo {
@@ -1328,12 +1370,12 @@ extension LibraryViewController {
                             )
                         }
 
-                        self.hideLoadingIndicator()
+                        await (UIApplication.shared.delegate as? AppDelegate)?.hideLoadingIndicator()
                     }
                 },
                 // unread chapters
                 UIAction(title: NSLocalizedString("UNREAD"), image: UIImage(systemName: "eye.slash")) { _ in
-                    self.showLoadingIndicator()
+                    (UIApplication.shared.delegate as? AppDelegate)?.showLoadingIndicator()
 
                     Task {
                         for manga in mangaInfo {
@@ -1347,7 +1389,7 @@ extension LibraryViewController {
                             )
                         }
 
-                        self.hideLoadingIndicator()
+                        await (UIApplication.shared.delegate as? AppDelegate)?.hideLoadingIndicator()
                     }
                 }
             ]))

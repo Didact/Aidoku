@@ -113,6 +113,7 @@ extension SettingsView {
                 }
             }
         }
+        .listStyle(.insetGrouped)
         .overlay {
             if let searchResult, searchResult.sections.isEmpty {
                 UnavailableView.search(text: searchText)
@@ -229,13 +230,13 @@ extension SettingsView {
                 ) {
                     Task {
                         (UIApplication.shared.delegate as? AppDelegate)?.showLoadingIndicator(style: .progress)
-                        await CoreDataManager.shared.migrateChapterHistory(progress: { progress in
+                        await CoreDataManager.shared.migrateChapterHistory { progress in
                             Task { @MainActor in
                                 (UIApplication.shared.delegate as? AppDelegate)?.indicatorProgress = progress
                             }
-                        })
+                        }
                         NotificationCenter.default.post(name: Notification.Name("updateLibrary"), object: nil)
-                        (UIApplication.shared.delegate as? AppDelegate)?.hideLoadingIndicator()
+                        await (UIApplication.shared.delegate as? AppDelegate)?.hideLoadingIndicator()
                     }
                 }
             case "Advanced.resetSettings":
@@ -269,7 +270,7 @@ extension SettingsView {
                         NotificationCenter.default.post(name: Notification.Name("updateHistory"), object: nil)
                         NotificationCenter.default.post(name: Notification.Name("updateTrackers"), object: nil)
                         NotificationCenter.default.post(name: Notification.Name("updateCategories"), object: nil)
-                        (UIApplication.shared.delegate as? AppDelegate)?.hideLoadingIndicator()
+                        await (UIApplication.shared.delegate as? AppDelegate)?.hideLoadingIndicator()
                     }
                 }
             default:
@@ -289,6 +290,8 @@ extension SettingsView {
             SettingsTrackingView()
         } else if key == "About" {
             SettingsAboutView()
+        } else if key == "Insights" {
+            InsightsView()
         } else if key == "SourceLists" {
             SourceListsView()
         } else if key == "Backups" {

@@ -159,7 +159,7 @@ struct MangaView: View {
             }
             .task {
                 guard !detailsLoaded else { return }
-                await viewModel.markOpened()
+                await viewModel.markUpdatesViewed()
                 await viewModel.fetchDetails()
                 if let scrollToChapterKey {
                     withAnimation {
@@ -174,6 +174,7 @@ struct MangaView: View {
                 guard let navigationController = path.rootViewController?.navigationController
                 else { return }
                 if mode == .active {
+                    navigationController.setDismissGesturesEnabled(false)
                     UIView.animate(withDuration: 0.3) {
                         navigationController.isToolbarHidden = false
                         navigationController.toolbar.alpha = 1
@@ -182,6 +183,7 @@ struct MangaView: View {
                         }
                     }
                 } else {
+                    navigationController.setDismissGesturesEnabled(true)
                     UIView.animate(withDuration: 0.3) {
                         navigationController.toolbar.alpha = 0
                         if #available(iOS 26.0, *) {
@@ -193,7 +195,7 @@ struct MangaView: View {
                 }
             }
             .fullScreenCover(item: $openChapter) { chapter in
-                let readerController = ReaderViewController(
+                SwiftUIReaderNavigationController(
                     source: viewModel.source,
                     manga: {
                         var mangaWithFilteredChapters = viewModel.manga
@@ -206,9 +208,8 @@ struct MangaView: View {
                     }(),
                     chapter: chapter
                 )
-                SwiftUIReaderNavigationController(readerViewController: readerController)
-                    .ignoresSafeArea()
-                    .navigationTransitionZoom(sourceID: chapter, in: transitionNamespace)
+                .ignoresSafeArea()
+                .navigationTransitionZoom(sourceID: chapter, in: transitionNamespace)
             }
             .environment(\.editMode, $editMode)
         }
@@ -237,7 +238,7 @@ extension MangaView {
     var headerView: some View {
         ZStack {
             MangaDetailsHeaderView(
-                source: viewModel.source,
+                source: $viewModel.source,
                 manga: $viewModel.manga,
                 chapters: $viewModel.chapters,
                 nextChapter: $viewModel.nextChapter,
@@ -620,7 +621,7 @@ extension MangaView {
         })
         if !selectedChapters.isEmpty && allChaptersQueued {
             Button(NSLocalizedString("CANCEL")) {
-                Task {
+                Task { [selectedChapters] in
                     await DownloadManager.shared.cancelDownloads(for: selectedChapters.map {
                         .init(
                             sourceKey: viewModel.manga.sourceKey,
@@ -710,25 +711,13 @@ extension MangaView {
     }
 
     func showLoadingIndicator() {
-        guard loadingAlert == nil else { return }
-        loadingAlert = UIAlertController(
-            title: nil,
-            message: NSLocalizedString("LOADING_ELLIPSIS", comment: ""),
-            preferredStyle: .alert
-        )
-        guard let loadingAlert else { return }
-        let loadingIndicator = UIActivityIndicatorView(frame: CGRect(x: 10, y: 5, width: 50, height: 50))
-        loadingIndicator.style = .medium
-        loadingIndicator.tag = 3
-        loadingIndicator.startAnimating()
-        loadingAlert.view.addSubview(loadingIndicator)
-        path.present(loadingAlert)
+        (UIApplication.shared.delegate as? AppDelegate)?.showLoadingIndicator()
     }
 
     func hideLoadingIndicator() {
-        guard let loadingAlert else { return }
-        loadingAlert.dismiss(animated: true)
-        self.loadingAlert = nil
+        Task {
+            await (UIApplication.shared.delegate as? AppDelegate)?.hideLoadingIndicator()
+        }
     }
 }
 

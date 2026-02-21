@@ -8,9 +8,19 @@
 import Foundation
 
 extension Notification.Name {
+    static let orientationDidChange = Self("orientationDidChange")
+
+    static let updateBackupList = Self("updateBackupList")
+
+    // sources
     static let updateSourceList = Self("updateSourceList")
     static let updateSourceLists = Self("updateSourceLists")
-    static let updateBackupList = Self("updateBackupList")
+    static let loadedSourceFilters = Self("loadedSourceFilters")
+    static let sourceLoaded = Self("sourceLoaded")
+    static let sourceUnloaded = Self("sourceUnloaded")
+
+    // general
+    static let incognitoMode = Self("General.incognitoMode")
 
     // library
     static let updateLibrary = Self("updateLibrary")
@@ -19,9 +29,10 @@ extension Notification.Name {
     static let migratedManga = Self("migratedManga")
     static let updateMangaDetails = Self("updateMangaDetails")
     static let updateCategories = Self("updateCategories")
+    static let updateManga = Self("updateManga")
     static let updateMangaCategories = Self("updateMangaCategories")
-    static let updateChapters = Self("updateChapters")
     static let updateLibraryLock = Self("updateLibraryLock")
+    static let pinTitles = Self("Library.pinTitles")
 
     // history
     static let updateHistory = Self("updateHistory")
@@ -49,8 +60,11 @@ extension Notification.Name {
     static let filterExternalSources = Self("filterExternalSources")
 
     // reader
+    static let readerShowingBars = Self("readerShowingBars")
+    static let readerHidingBars = Self("readerHidingBars")
     static let readerReadingMode = Self("Reader.readingMode")
     static let readerTapZones = Self("Reader.tapZones")
+    static let readerOrientation = Self("Reader.orientation")
 
     // settings
     static let portraitRowsSetting = Self("General.portraitRows")

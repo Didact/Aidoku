@@ -90,6 +90,13 @@ struct ReaderSettingsView: View {
                     )
                     SettingView(
                         setting: .init(
+                            key: "Reader.liveText",
+                            title: NSLocalizedString("LIVE_TEXT"),
+                            value: .toggle(.init())
+                        )
+                    )
+                    SettingView(
+                        setting: .init(
                             key: "Reader.backgroundColor",
                             title: NSLocalizedString("READER_BG_COLOR"),
                             value: .select(.init(
@@ -103,21 +110,23 @@ struct ReaderSettingsView: View {
                             ))
                         )
                     )
-                    SettingView(
-                        setting: .init(
-                            key: "Reader.orientation",
-                            title: NSLocalizedString("READER_ORIENTATION"),
-                            notification: "Reader.orientation",
-                            value: .select(.init(
-                                values: ["device", "portrait", "landscape"],
-                                titles: [
-                                    NSLocalizedString("FOLLOW_DEVICE"),
-                                    NSLocalizedString("PORTRAIT"),
-                                    NSLocalizedString("LANDSCAPE")
-                                ]
-                            ))
+                    if UIDevice.current.userInterfaceIdiom != .pad {
+                        SettingView(
+                            setting: .init(
+                                key: "Reader.orientation",
+                                title: NSLocalizedString("READER_ORIENTATION"),
+                                notification: "Reader.orientation",
+                                value: .select(.init(
+                                    values: ["device", "portrait", "landscape"],
+                                    titles: [
+                                        NSLocalizedString("FOLLOW_DEVICE"),
+                                        NSLocalizedString("PORTRAIT"),
+                                        NSLocalizedString("LANDSCAPE")
+                                    ]
+                                ))
+                            )
                         )
-                    )
+                    }
                 }
 
                 Section {
@@ -256,7 +265,7 @@ struct ReaderSettingsView: View {
                                 key: "Reader.pillarboxAmount",
                                 title: NSLocalizedString("PILLARBOX_AMOUNT"),
                                 requires: "Reader.pillarbox",
-                                value: .stepper(.init(minimumValue: 0, maximumValue: 100, stepValue: 5))
+                                value: .stepper(.init(minimumValue: 5, maximumValue: 95, stepValue: 5))
                             )
                         )
                         SettingView(

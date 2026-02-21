@@ -10,34 +10,45 @@ import CoreData
 import Foundation
 
 /// An interface to interact with title tracking services.
-class TrackerManager {
+actor TrackerManager {
     /// The shared tracker mangaer instance.
     static let shared = TrackerManager()
 
     /// An instance of the Komga tracker.
-    let komga = KomgaTracker()
+    static let komga = KomgaTracker()
     /// An instance of the Komga tracker.
-    let kavita = KavitaTracker()
+    static let kavita = KavitaTracker()
     /// An instance of the AniList tracker.
-    let anilist = AniListTracker()
+    static let anilist = AniListTracker()
     /// An instance of the MyAnimeList tracker.
-    let myanimelist = MyAnimeListTracker()
+    static let myanimelist = MyAnimeListTracker()
     /// An instance of the Shikimori tracker.
-    let shikimori = ShikimoriTracker()
+    static let shikimori = ShikimoriTracker()
     /// An instance of the Bangumi tracker.
-    let bangumi = BangumiTracker()
+    static let bangumi = BangumiTracker()
 
     /// An array of the available trackers.
-    lazy var trackers: [Tracker] = [komga, kavita, anilist, myanimelist, shikimori, bangumi]
+    static let trackers: [Tracker] = [komga, kavita, anilist, myanimelist, shikimori, bangumi]
 
     /// A boolean indicating if there is a tracker that is currently logged in.
-    var hasAvailableTrackers: Bool {
-        trackers.filter { !($0 is EnhancedTracker) }.contains { $0.isLoggedIn }
+    static var hasAvailableTrackers: Bool {
+        Self.trackers.filter { !($0 is EnhancedTracker) }.contains { $0.isLoggedIn }
     }
 
     /// Get the instance of the tracker with the specified id.
-    func getTracker(id: String) -> Tracker? {
-        trackers.first { $0.id == id }
+    static func getTracker(id: String) -> Tracker? {
+        Self.trackers.first { $0.id == id }
+    }
+
+    struct TrackingState: Codable {
+        var pendingPageUpdates: [PageTrackUpdate] = []
+    }
+    private var trackingState: TrackingState
+    private var pageUpdateTask: Task<(), Never>?
+
+    init() {
+        self.trackingState = UserDefaults.standard.data(forKey: "Tracker.pageTrackingState")
+            .flatMap { try? JSONDecoder().decode(TrackingState.self, from: $0) } ?? .init()
     }
 
     /// Send chapter read update to logged in trackers.
@@ -50,10 +61,12 @@ class TrackerManager {
         let key = "Manga.chapterDisplayMode.\(uniqueKey)"
         let displayMode = ChapterTitleDisplayMode(rawValue: UserDefaults.standard.integer(forKey: key)) ?? .default
 
-        let trackItems: [TrackItem] = await CoreDataManager.shared.container.performBackgroundTask { context in
+        let sourceId = chapter.sourceId
+        let mangaId = chapter.mangaId
+        let trackItems: [TrackItem] = await CoreDataManager.shared.container.performBackgroundTask { @Sendable context in
             CoreDataManager.shared.getTracks(
-                sourceId: chapter.sourceId,
-                mangaId: chapter.mangaId,
+                sourceId: sourceId,
+                mangaId: mangaId,
                 context: context
             ).map { $0.toItem() }
         }
@@ -61,7 +74,7 @@ class TrackerManager {
         for item in trackItems {
             guard
                 skipTracker?.id != item.trackerId,
-                let tracker = getTracker(id: item.trackerId),
+                let tracker = Self.getTracker(id: item.trackerId),
                 !(tracker is PageTracker),
                 let state = try? await tracker.getState(trackId: item.id)
             else { continue }
@@ -168,16 +181,24 @@ class TrackerManager {
             ).map { $0.toItem() }
         }
 
+        var newUpdates: [PageTrackUpdate] = []
+
         for item in trackItems {
-            guard let tracker = getTracker(id: item.trackerId) as? PageTracker else { continue }
-            do {
-                for chapter in chapters {
-                    try await tracker.setProgress(trackId: item.id, chapter: chapter, progress: progress)
-                }
-            } catch {
-                LogManager.logger.error("Failed to set tracker progress (\(tracker.id)): \(error)")
+            guard let tracker = Self.getTracker(id: item.trackerId) as? PageTracker else {
+                continue
+            }
+            for chapter in chapters {
+                newUpdates.append(.init(
+                    trackerId: tracker.id,
+                    trackId: item.id,
+                    chapter: chapter,
+                    progress: progress
+                ))
             }
         }
+
+        queuePageUpdates(newUpdates)
+        await processPendingUpdates()
     }
 
     /// Register a new track item to a manga and save to the data store.
@@ -225,7 +246,7 @@ class TrackerManager {
 
     /// Saves a TrackItem to the data store.
     private func saveTrackItem(item: TrackItem) async {
-        await CoreDataManager.shared.container.performBackgroundTask { context in
+        await CoreDataManager.shared.container.performBackgroundTask { @Sendable context in
             CoreDataManager.shared.createTrack(
                 id: item.id,
                 trackerId: item.trackerId,
@@ -237,21 +258,21 @@ class TrackerManager {
             do {
                 try context.save()
             } catch {
-                LogManager.logger.error("TrackManager.saveTrackItem(item: \(item)): \(error.localizedDescription)")
+                LogManager.logger.error("TrackManager.saveTrackItem(item:): \(error)")
             }
         }
-        NotificationCenter.default.post(name: Notification.Name("updateTrackers"), object: nil)
-        NotificationCenter.default.post(name: Notification.Name("trackItemAdded"), object: item)
+        NotificationCenter.default.post(name: .updateTrackers, object: nil)
+        NotificationCenter.default.post(name: .trackItemAdded, object: item)
     }
 
     /// Removes the TrackItem from the data store.
     func removeTrackItem(item: TrackItem) async {
-        await CoreDataManager.shared.container.performBackgroundTask { context in
+        await CoreDataManager.shared.container.performBackgroundTask { @Sendable context in
             self.removeTrackItem(item: item, context: context)
         }
     }
 
-    func removeTrackItem(item: TrackItem, context: NSManagedObjectContext) {
+    nonisolated func removeTrackItem(item: TrackItem, context: NSManagedObjectContext) {
         CoreDataManager.shared.removeTrack(
             trackerId: item.trackerId,
             sourceId: item.sourceId,
@@ -261,9 +282,9 @@ class TrackerManager {
         do {
             try context.save()
         } catch {
-            LogManager.logger.error("TrackManager.removeTrackItem(item: \(item)): \(error.localizedDescription)")
+            LogManager.logger.error("TrackManager.removeTrackItem(item:): \(error)")
         }
-        NotificationCenter.default.post(name: Notification.Name("updateTrackers"), object: nil)
+        NotificationCenter.default.post(name: .updateTrackers, object: nil)
     }
 
     /// Checks if a manga is being tracked
@@ -273,8 +294,14 @@ class TrackerManager {
     }
 
     /// Checks if there is a tracker that can be added to the given manga.
-    func hasAvailableTrackers(sourceKey: String, mangaKey: String) -> Bool {
-        trackers.contains { $0.canRegister(sourceKey: sourceKey, mangaKey: mangaKey) }
+    func hasAvailableTrackers(sourceKey: String, mangaKey: String) async -> Bool {
+        for tracker in Self.trackers {
+            let canRegister = try? await tracker.canRegister(sourceKey: sourceKey, mangaKey: mangaKey)
+            if canRegister == true {
+                return true
+            }
+        }
+        return false
     }
 
     /// Sync progress from tracker to local history.
@@ -284,24 +311,36 @@ class TrackerManager {
         manga: AidokuRunner.Manga,
         chapters: [AidokuRunner.Chapter]? = nil
     ) async {
-        let chaptersToMark = await getChaptersToSyncProgressFromTracker(
-            tracker: tracker,
-            trackId: trackId,
-            manga: manga,
-            chapters: chapters
-        )
-        if !chaptersToMark.isEmpty {
-            await HistoryManager.shared.addHistory(
-                sourceId: manga.sourceKey,
-                mangaId: manga.key,
-                chapters: chaptersToMark,
-                skipTracker: tracker
+        if tracker is PageTracker {
+            await syncPageTrackerHistory(
+                tracker: tracker,
+                manga: manga,
+                chapters: chapters
             )
+        } else {
+            let chaptersToMark = await getChaptersToSyncProgressFromTracker(
+                tracker: tracker,
+                trackId: trackId,
+                manga: manga,
+                chapters: chapters
+            )
+            if !chaptersToMark.isEmpty {
+                await HistoryManager.shared.addHistory(
+                    sourceId: manga.sourceKey,
+                    mangaId: manga.key,
+                    chapters: chaptersToMark,
+                    skipTracker: tracker
+                )
+            }
         }
     }
 
     /// Sync progress with all linked trackers that support page progress.
-    func syncPageTrackerHistory(manga: AidokuRunner.Manga, chapters: [AidokuRunner.Chapter]? = nil) async {
+    func syncPageTrackerHistory(
+        tracker: Tracker? = nil,
+        manga: AidokuRunner.Manga,
+        chapters: [AidokuRunner.Chapter]? = nil
+    ) async {
         let chapters = if let chapters {
             chapters
         } else {
@@ -321,9 +360,12 @@ class TrackerManager {
         }
 
         for item in trackItems {
-            guard let tracker = getTracker(id: item.trackerId) as? PageTracker else { continue }
+            guard let targetTracker = Self.getTracker(id: item.trackerId) as? PageTracker else { continue }
+            if let tracker, targetTracker.id != tracker.id {
+                continue // if a specific tracker is provided, only sync that one
+            }
             do {
-                let batchProgress = try await tracker.getProgress(trackId: item.id, chapters: chapters)
+                let batchProgress = try await targetTracker.getProgress(trackId: item.id, chapters: chapters)
                 if result.isEmpty {
                     result = batchProgress
                 } else {
@@ -342,14 +384,14 @@ class TrackerManager {
                     }
                 }
             } catch {
-                LogManager.logger.error("Failed to get tracker progress (\(tracker.id)): \(error)")
+                LogManager.logger.error("Failed to get tracker progress (\(targetTracker.id)): \(error)")
             }
         }
 
         guard !result.isEmpty else { return }
 
         // create local history
-        let (completed, progressed) = await CoreDataManager.shared.container.performBackgroundTask { context in
+        let (completed, progressed) = await CoreDataManager.shared.container.performBackgroundTask { [result] context in
             var completed: [String] = []
             var progressed: [String: Int] = [:]
 
@@ -445,8 +487,8 @@ class TrackerManager {
 
     /// Add all applicable enhanced trackers to a given manga.
     func bindEnhancedTrackers(manga: AidokuRunner.Manga) async {
-        for tracker in trackers where tracker is EnhancedTracker {
-            if tracker.canRegister(sourceKey: manga.sourceKey, mangaKey: manga.key) {
+        for tracker in Self.trackers where tracker is EnhancedTracker {
+            if (try? await tracker.canRegister(sourceKey: manga.sourceKey, mangaKey: manga.key)) == true {
                 do {
                     let items = try await tracker.search(for: manga, includeNsfw: true)
                     guard let item = items.first else {
@@ -570,5 +612,77 @@ extension TrackerManager {
         }
 
         return chaptersToMark
+    }
+}
+
+// MARK: Tracking State
+extension TrackerManager {
+    func processPendingUpdates() async {
+        guard !trackingState.pendingPageUpdates.isEmpty else { return }
+
+        if let pageUpdateTask {
+            await pageUpdateTask.value
+            return
+        }
+
+        pageUpdateTask = Task {
+            var stillPending: [PageTrackUpdate] = []
+            var successes = 0
+
+            for var update in trackingState.pendingPageUpdates {
+                guard let tracker = TrackerManager.getTracker(id: update.trackerId) as? PageTracker else {
+                    continue // tracker no longer exists, remove the update
+                }
+                do {
+                    try await tracker.setProgress(
+                        trackId: update.trackId,
+                        chapter: update.chapter,
+                        progress: update.progress
+                    )
+                    if update.failCount > 0 {
+                        successes += 1
+                    }
+                } catch {
+                    LogManager.logger.error("Failed to set tracker progress (\(tracker.id)): \(error)")
+                    update.failCount += 1
+                    if update.failCount >= 3 {
+                        LogManager.logger.warn("Removing failed page update after 3 attempts: \(update)")
+                        continue // remove update after three failed attempts (initial + two retries)
+                    }
+                    stillPending.append(update)
+                }
+            }
+
+            if successes > 0 {
+                LogManager.logger.info("Processed \(successes) previously failed page tracker update\(successes > 1 ? "s" : "")")
+            }
+
+            trackingState.pendingPageUpdates = stillPending
+            savePageTrackingState()
+            pageUpdateTask = nil
+        }
+    }
+
+    private func savePageTrackingState() {
+        let data = try? JSONEncoder().encode(trackingState)
+        if let data {
+            UserDefaults.standard.set(data, forKey: "Tracker.pageTrackingState")
+        }
+    }
+
+    private func queuePageUpdates(_ updates: [PageTrackUpdate]) {
+        // merge new updates into existing failed updates, preserving the latest ones
+        for update in updates {
+            // remove any old update, assuming it's not as recent as the new one
+            let existingUpdateIndex = trackingState.pendingPageUpdates.firstIndex(where: {
+                $0.trackerId == update.trackerId && $0.trackId == update.trackId && $0.chapter.key == update.chapter.key
+            })
+            if let existingUpdateIndex {
+                trackingState.pendingPageUpdates.remove(at: existingUpdateIndex)
+            }
+            // add new update
+            trackingState.pendingPageUpdates.append(update)
+        }
+        savePageTrackingState()
     }
 }

@@ -13,6 +13,7 @@ class SearchViewController: UIViewController {
     private let viewModel = SearchContentView.ViewModel()
     private let searchController: UISearchController = .init(searchResultsController: nil)
 
+    private var isSearchBarActive = false
     private var cancellables = Set<AnyCancellable>()
 
     private var sources: [AidokuRunner.Source] = [] {
@@ -73,21 +74,26 @@ class SearchViewController: UIViewController {
             searchCommitToggle: searchCommitToggleBinding,
             filters: filtersBinding,
             openResult: open(result:),
+            dismissKeyboard: {
+                self.searchController.searchBar.resignFirstResponder()
+            },
             path: NavigationCoordinator(rootViewController: self)
         )
     }
     private var headerView: FilterHeaderView {
-        FilterHeaderView(
-            filters: [
-                .init(
-                    id: "contentRating",
-                    title: NSLocalizedString("CONTENT_RATING"),
-                    value: .multiselect(.init(
-                        canExclude: true,
-                        options: SourceContentRating.allCases.map { $0.title },
-                        ids: SourceContentRating.allCases.map { $0.stringValue }
-                    ))
-                ),
+        var filters: [AidokuRunner.Filter] = [
+            .init(
+                id: "contentRating",
+                title: NSLocalizedString("CONTENT_RATING"),
+                value: .multiselect(.init(
+                    canExclude: true,
+                    options: SourceContentRating.allCases.map { $0.title },
+                    ids: SourceContentRating.allCases.map { $0.stringValue }
+                ))
+            )
+        ]
+        if !sourceLanguages.isEmpty {
+            filters.append(
                 .init(
                     id: "languages",
                     title: NSLocalizedString("LANGUAGES"),
@@ -97,7 +103,11 @@ class SearchViewController: UIViewController {
                         options: sourceLanguages.map { $0.title },
                         ids: sourceLanguages.map { $0.value }
                     ))
-                ),
+                )
+            )
+        }
+        if !sources.isEmpty {
+            filters.append(
                 .init(
                     id: "sources",
                     title: NSLocalizedString("SOURCES"),
@@ -107,8 +117,19 @@ class SearchViewController: UIViewController {
                         ids: sources.map { $0.key }
                     ))
                 )
-            ],
-            enabledFilters: filtersBinding
+            )
+        }
+        return FilterHeaderView(
+            filters: filters,
+            enabledFilters: filtersBinding,
+            onFilterSheetDismiss: {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    if self.isSearchBarActive {
+                        self.searchController.searchBar.becomeFirstResponder()
+                    }
+                }
+            }
         )
     }
 
@@ -330,5 +351,13 @@ extension SearchViewController: UISearchBarDelegate {
 
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
         searchText = ""
+    }
+
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        isSearchBarActive = true
+    }
+
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        isSearchBarActive = false
     }
 }

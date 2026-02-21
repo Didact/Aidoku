@@ -9,20 +9,19 @@ import AidokuRunner
 import Foundation
 
 /// Shikimori tracker for Aidoku.
-class ShikimoriTracker: OAuthTracker {
+final class ShikimoriTracker: OAuthTracker {
     let id = "shikimori"
     let name = "Shikimori"
     let icon = PlatformImage(named: "shikimori")
 
-    let supportedStatuses = TrackStatus.defaultStatuses
-    let scoreType: TrackScoreType = .tenPoint
-
     let api = ShikimoriApi()
 
     let callbackHost = "shikimori-auth"
-    lazy var authenticationUrl: String = api.getAuthenticationUrl() ?? ""
-
     var oauthClient: OAuthClient { api.oauth }
+
+    func getTrackerInfo() -> TrackerInfo {
+        .init(supportedStatuses: TrackStatus.defaultStatuses, scoreType: .tenPoint)
+    }
 
     func register(trackId: String, highestChapterRead: Float?, earliestReadDate: Date?) async throws -> String? {
         await api.register(trackId: trackId, highestChapterRead: highestChapterRead, earliestReadDate: earliestReadDate)
@@ -48,6 +47,15 @@ class ShikimoriTracker: OAuthTracker {
 
     func search(title: String, includeNsfw: Bool) async -> [TrackSearchItem] {
         await getSearch(query: title, includeNsfw: includeNsfw)
+    }
+
+    func getAuthenticationUrl() async -> URL? {
+        await api.oauth.getAuthenticationUrl(
+            responseType: "code",
+            path: "/oauth/authorize",
+            redirectUri: "aidoku://shikimori-auth",
+            extraQueryItems: ["scope": "user_rates"]
+        )
     }
 
     func handleAuthenticationCallback(url: URL) async {

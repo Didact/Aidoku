@@ -125,9 +125,8 @@ struct MigrateMangaView: View {
                     appDelegate.showLoadingIndicator(style: .progress) {
                         Task {
                             await performMigration()
-                            appDelegate.hideLoadingIndicator {
-                                dismiss()
-                            }
+                            await appDelegate.hideLoadingIndicator()
+                            dismiss()
                         }
                     }
                 },
@@ -399,6 +398,7 @@ struct MigrateMangaView: View {
                         appDelegate.indicatorProgress = Float(counter) / Float(manga.count * 2)
                     }
                     if let result {
+                        await TrackerManager.shared.bindEnhancedTrackers(manga: result.to.toNew())
                         NotificationCenter.default.post(name: .migratedManga, object: result)
                     }
                 }

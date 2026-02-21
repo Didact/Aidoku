@@ -82,12 +82,34 @@ class ReaderWebtoonViewController: ZoomableCollectionViewController {
 
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 5
+
+        zoomView.onZoomScaleChanged = { [weak self] scale in
+            self?.setLiveTextButtonHidden(scale != 1)
+        }
     }
 
     override func observe() {
         addObserver(forName: "Reader.verticalInfiniteScroll") { [weak self] notification in
             self?.infinite = notification.object as? Bool
                 ?? UserDefaults.standard.bool(forKey: "Reader.verticalInfiniteScroll")
+        }
+        addObserver(forName: .readerShowingBars) { [weak self] _ in
+            self?.setLiveTextButtonHidden(false)
+        }
+        addObserver(forName: .readerHidingBars) { [weak self] _ in
+            self?.setLiveTextButtonHidden(true)
+        }
+
+        addObserver(forName: UIApplication.didReceiveMemoryWarningNotification.rawValue) { [weak self] _ in
+            // clear live text analysis
+            LogManager.logger.warn("Received memory warning")
+
+            if #available(iOS 16.0, *) {
+                self?.collectionNode.visibleNodes.forEach { node in
+                    guard let node = node as? ReaderWebtoonPageNode else { return }
+                    node.imageNode.imageAnalaysisInteraction = nil
+                }
+            }
         }
     }
 
@@ -122,10 +144,26 @@ class ReaderWebtoonViewController: ZoomableCollectionViewController {
             currentPages.count - (hasStartInfo ? 1 : 0)
         )
     }
+
+    private func setLiveTextButtonHidden(_ hidden: Bool) {
+        collectionNode.visibleNodes.forEach {
+            guard let pageNode = $0 as? ReaderWebtoonPageNode else { return }
+            if hidden || delegate?.barsHidden == true {
+                pageNode.setLiveTextHidden(true)
+            } else {
+                let scale = zoomView.scrollNode.view.zoomScale
+                pageNode.setLiveTextHidden(scale != 1)
+            }
+        }
+    }
 }
 
 // MARK: - Scroll View Delegate
 extension ReaderWebtoonViewController {
+    override func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        super.scrollViewWillBeginDragging(scrollView)
+        setLiveTextButtonHidden(true)
+    }
 
     // Update current page when scrolling
     override func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -188,7 +226,6 @@ extension ReaderWebtoonViewController {
 
 // MARK: - Context Menu
 extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
-
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
         configurationForMenuAtLocation location: CGPoint
@@ -202,7 +239,16 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
         else {
             return nil
         }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil, actionProvider: { _ in
+        // disable when live text highlighting is active
+        if
+            #available(iOS 16.0, *),
+            let imageAnalaysisInteraction = node.imageNode.imageAnalaysisInteraction,
+            imageAnalaysisInteraction.selectableItemsHighlighted
+        {
+            return nil
+        }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil, actionProvider: { [weak self] _ in
+            guard let self else { return nil }
             let saveToPhotosAction = UIAction(
                 title: NSLocalizedString("SAVE_TO_PHOTOS", comment: ""),
                 image: UIImage(systemName: "photo")
@@ -262,19 +308,24 @@ extension ReaderWebtoonViewController {
 
     // check for infinite load when deceleration stops
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        guard infinite else { return }
         if decelerate {
             return
         }
-        isScrolling = false
-        checkInfiniteLoad()
-    }
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        setLiveTextButtonHidden(false)
         guard infinite else { return }
         isScrolling = false
         checkInfiniteLoad()
     }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        setLiveTextButtonHidden(false)
+        guard infinite else { return }
+        isScrolling = false
+        checkInfiniteLoad()
+    }
+
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        setLiveTextButtonHidden(false)
         guard infinite else { return }
         isScrolling = false
         checkInfiniteLoad()
@@ -613,7 +664,8 @@ extension ReaderWebtoonViewController: ASCollectionDataSource {
         var page = pages[indexPath.section][indexPath.item]
         if page.type == .imagePage {
             // image page
-            return {
+            return { [weak self] in
+                guard let self else { return ASCellNode() }
                 let cell = ReaderWebtoonPageNode(source: self.viewModel.source, page: page)
                 cell.delegate = self
                 return cell
@@ -633,8 +685,9 @@ extension ReaderWebtoonViewController: ASCollectionDataSource {
             let to = page.type == .prevInfoPage
                 ? self.delegate?.getPreviousChapter()
                 : self.delegate?.getNextChapter()
-            return {
-                ReaderWebtoonTransitionNode(transition: .init(
+            return { [weak self] in
+                guard let self else { return ASCellNode() }
+                return ReaderWebtoonTransitionNode(transition: .init(
                     type: page.type == .prevInfoPage ? .prev : .next,
                     from: chapter.toOld(
                         sourceId: self.viewModel.source?.key ?? self.viewModel.manga.sourceKey,

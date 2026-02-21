@@ -12,7 +12,7 @@ import SwiftUI
 extension MangaView {
     @MainActor
     class ViewModel: ObservableObject {
-        weak var source: AidokuRunner.Source?
+        @Published var source: AidokuRunner.Source?
 
         @Published var manga: AidokuRunner.Manga
         @Published var chapters: [AidokuRunner.Chapter] = []
@@ -52,6 +52,7 @@ extension MangaView {
         @Published var error: Error?
 
         private var fetchedDetails = false
+        private var markedOpened = false
         private var cancellables = Set<AnyCancellable>()
 
         init(source: AidokuRunner.Source?, manga: AidokuRunner.Manga) {
@@ -107,11 +108,28 @@ extension MangaView {
                 }
                 .store(in: &cancellables)
 
+            for notification in [Notification.Name.sourceLoaded, Notification.Name.sourceUnloaded] {
+                NotificationCenter.default.publisher(for: notification)
+                    .sink { [weak self] output in
+                        guard
+                            let self,
+                            let sourceKey = output.object as? String,
+                            self.manga.sourceKey == sourceKey
+                        else {
+                            return
+                        }
+                        self.source = SourceManager.shared.source(for: sourceKey)
+                    }
+                    .store(in: &cancellables)
+            }
+
             // history
             NotificationCenter.default.publisher(for: .updateHistory)
                 .sink { [weak self] _ in
+                    guard let self else { return }
                     Task {
-                        await self?.loadHistory()
+                        await self.loadHistory()
+                        self.updateReadButton()
                     }
                 }
                 .store(in: &cancellables)
@@ -127,6 +145,7 @@ extension MangaView {
                         self.readingHistory[chapter.id] = (page: -1, date: date)
                     }
                     self.updateReadButton()
+                    self.checkForAllReadMarkOpened()
                 }
                 .store(in: &cancellables)
 
@@ -161,6 +180,7 @@ extension MangaView {
                         date: Int(Date().timeIntervalSince1970)
                     )
                     self.updateReadButton()
+                    self.checkForAllReadMarkOpened()
                 }
                 .store(in: &cancellables)
 
@@ -169,7 +189,7 @@ extension MangaView {
                 .sink { [weak self] output in
                     guard let self, let item = output.object as? TrackItem else { return }
                     Task {
-                        if let tracker = TrackerManager.shared.getTracker(id: item.trackerId) {
+                        if let tracker = TrackerManager.getTracker(id: item.trackerId) {
                             await TrackerManager.shared.syncProgressFromTracker(
                                 tracker: tracker,
                                 trackId: item.id,
@@ -238,9 +258,20 @@ extension MangaView {
 }
 
 extension MangaView.ViewModel {
-    func markOpened() async {
+    func markUpdatesViewed() async {
         if !UserDefaults.standard.bool(forKey: "General.incognitoMode") {
             await MangaUpdateManager.shared.viewAllUpdates(of: manga)
+        }
+    }
+
+    private func checkForAllReadMarkOpened() {
+        guard !markedOpened else { return }
+        if getNextChapter() == .allRead {
+            markedOpened = true
+            Task {
+                await CoreDataManager.shared.setOpened(sourceId: manga.sourceKey, mangaId: manga.key)
+                NotificationCenter.default.post(name: .updateLibrary, object: nil)
+            }
         }
     }
 
@@ -378,7 +409,7 @@ extension MangaView.ViewModel {
                 ).map { $0.toItem() }
             }
             for trackItem in trackItems {
-                guard let tracker = TrackerManager.shared.getTracker(id: trackItem.trackerId) else { continue }
+                guard let tracker = TrackerManager.getTracker(id: trackItem.trackerId) else { continue }
                 await TrackerManager.shared.syncProgressFromTracker(
                     tracker: tracker,
                     trackId: trackItem.id,
@@ -396,15 +427,15 @@ extension MangaView.ViewModel {
         }
 
         let sourceKey = source.key
-        let mangaId = manga.key
+        let mangaKey = manga.key
 
         let inLibrary = await CoreDataManager.shared.container.performBackgroundTask { @Sendable context in
-            CoreDataManager.shared.hasLibraryManga(sourceId: sourceKey, mangaId: mangaId, context: context)
+            CoreDataManager.shared.hasLibraryManga(sourceId: sourceKey, mangaId: mangaKey, context: context)
         }
 
         do {
             let oldManga = self.manga
-            var newManga = try await source.getMangaUpdate(
+            let newManga = try await source.getMangaUpdate(
                 manga: oldManga,
                 needsDetails: true,
                 needsChapters: true
@@ -412,20 +443,29 @@ extension MangaView.ViewModel {
 
             // update manga in db
             if inLibrary {
-                let result = await CoreDataManager.shared.updateMangaDetails(manga: newManga.toOld())
-                newManga = result?.toNew(chapters: newManga.chapters) ?? newManga
+                await CoreDataManager.shared.container.performBackgroundTask { [chapterLangFilter, chapterScanlatorFilter] context in
+                    guard
+                        let libraryObject = CoreDataManager.shared.getLibraryManga(
+                            sourceId: sourceKey,
+                            mangaId: mangaKey,
+                            context: context
+                        ),
+                        let mangaObject = libraryObject.manga
+                    else {
+                        return
+                    }
 
-                if let chapters = newManga.chapters {
-                    let sourceKey = source.key
-                    let mangaKey = newManga.key
-                    await CoreDataManager.shared.container.performBackgroundTask { @Sendable [chapterLangFilter, chapterScanlatorFilter] context in
+                    // update details
+                    mangaObject.load(from: newManga)
+
+                    if let chapters = newManga.chapters {
                         let newChapters = CoreDataManager.shared.setChapters(
                             chapters,
                             sourceId: sourceKey,
                             mangaId: mangaKey,
                             context: context
                         )
-                        // update manga updates
+                        // add manga updates
                         for chapter in newChapters
                         where
                             chapterLangFilter != nil ? chapter.lang == chapterLangFilter : true
@@ -438,13 +478,26 @@ extension MangaView.ViewModel {
                                 context: context
                             )
                         }
-                        try? context.save()
+                        libraryObject.lastChapter = chapters.compactMap { $0.dateUploaded }.max()
+                        libraryObject.lastUpdatedChapters = Date.now
                     }
-                    await markOpened()
+
+                    let now = Date.now
+                    libraryObject.lastUpdated = now
+
+                    if !UserDefaults.standard.bool(forKey: "General.incognitoMode") {
+                        libraryObject.lastOpened = now.addingTimeInterval(1) // ensure item isn't re-pinned, since it's already open
+                    }
+
+                    try? context.save()
+                }
+
+                if newManga.chapters != nil {
+                    await markUpdatesViewed()
                 }
             }
 
-            NotificationCenter.default.post(name: .updateChapters, object: newManga.identifier)
+            NotificationCenter.default.post(name: .updateManga, object: newManga.identifier)
 
             await loadHistory()
 
@@ -455,6 +508,9 @@ extension MangaView.ViewModel {
 
             // ensure downloaded chapters are in the correct section if they were added/removed from the main list
             await fetchDownloadedChapters()
+
+            // sync history with tracker
+            await syncTrackerProgress()
         } catch {
             withAnimation {
                 self.manga.chapters = []
@@ -580,9 +636,7 @@ extension MangaView.ViewModel {
             manga == self.manga.identifier
         { // all chapters
             downloadProgress = [:]
-            for chapter in self.manga.chapters ?? chapters {
-                downloadStatus[chapter.key] = DownloadStatus.none
-            }
+            downloadStatus = [:]
         }
     }
 
@@ -620,7 +674,11 @@ extension MangaView.ViewModel {
                     true
                 }
                 let cond2 = if !chapterScanlatorFilter.isEmpty  {
-                    chapterScanlatorFilter.contains(where: (chapter.scanlators ?? []).contains)
+                    if let chapterScanlators = chapter.scanlators, !chapterScanlators.isEmpty {
+                        chapterScanlatorFilter.contains(where: chapterScanlators.contains)
+                    } else {
+                        chapterScanlatorFilter.contains("")
+                    }
                 } else {
                     true
                 }
@@ -652,7 +710,7 @@ extension MangaView.ViewModel {
         return chapters
     }
 
-    enum ChapterResult {
+    enum ChapterResult: Equatable {
         case none
         case allRead
         case allLocked

@@ -18,7 +18,7 @@ enum JsonAnyType: Int {
     case intArray = 8
 }
 
-struct JsonAnyValue: Hashable {
+struct JsonAnyValue: Hashable, Sendable {
     let type: JsonAnyType
 
     var boolValue: Bool?
@@ -93,7 +93,7 @@ extension JsonAnyValue: Codable {
             stringArrayValue = nil
             objectValue = nil
         } else if let ints = try? container.decode([Int].self) {
-            type = .array
+            type = .intArray
             boolValue = nil
             intValue = nil
             doubleValue = nil

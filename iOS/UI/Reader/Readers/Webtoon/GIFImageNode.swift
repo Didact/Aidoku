@@ -7,11 +7,12 @@
 
 import AsyncDisplayKit
 import Gifu
+import VisionKit
 
 class GIFImageNode: ASControlNode {
     var imageView: GIFImageView?
     var animatedData: Data?
-    var storedInteraction: UIInteraction?
+    var storedInteractions: [UIInteraction] = []
 
     override var contentMode: UIView.ContentMode {
         didSet {
@@ -33,6 +34,21 @@ class GIFImageNode: ASControlNode {
         }
     }
 
+    @available(iOS 16.0, *)
+    var imageAnalaysisInteraction: ImageAnalysisInteraction? {
+        get {
+            imageView?.interactions.first(where: { $0 is ImageAnalysisInteraction }) as? ImageAnalysisInteraction
+        }
+        set {
+            if let index = imageView?.interactions.firstIndex(where: { $0 is ImageAnalysisInteraction }) {
+                imageView?.interactions.remove(at: index)
+            }
+            if let newValue {
+                addInteraction(newValue)
+            }
+        }
+    }
+
     override init() {
         super.init()
 
@@ -47,9 +63,11 @@ class GIFImageNode: ASControlNode {
                 gifView.animate(withGIFData: data)
                 self?.animatedData = nil
             }
-            if let interaction = self?.storedInteraction {
-                gifView.addInteraction(interaction)
-                self?.storedInteraction = nil
+            if let storedInteractions = self?.storedInteractions {
+                storedInteractions.forEach {
+                    gifView.addInteraction($0)
+                }
+                self?.storedInteractions = []
             }
             self?.imageView = gifView
             return gifView
@@ -70,7 +88,7 @@ class GIFImageNode: ASControlNode {
         if let imageView {
             imageView.addInteraction(interaction)
         } else {
-            storedInteraction = interaction
+            storedInteractions.append(interaction)
         }
     }
 }

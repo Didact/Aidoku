@@ -8,18 +8,20 @@
 import AidokuRunner
 import Foundation
 
-class KomgaTracker: EnhancedTracker, PageTracker {
+final class KomgaTracker: EnhancedTracker, PageTracker {
     let id = "komga"
     let name = NSLocalizedString("KOMGA")
     let icon = PlatformImage(named: "komga")
 
-    let supportedStatuses: [TrackStatus] = []
-    let scoreType: TrackScoreType = .tenPoint
     let isLoggedIn = true
 
     private let api = KomgaApi()
 
     private let idSeparator: Character = "|"
+
+    func getTrackerInfo() -> TrackerInfo {
+        .init(supportedStatuses: [], scoreType: .tenPoint, scoreOptions: [])
+    }
 
     func register(trackId: String, highestChapterRead: Float?, earliestReadDate: Date?) async throws -> String? {
         guard let highestChapterRead else { return nil }
@@ -27,11 +29,17 @@ class KomgaTracker: EnhancedTracker, PageTracker {
         let (sourceKey, seriesId) = try getIdParts(from: trackId)
 
         let state = try? await api.getState(sourceKey: sourceKey, seriesId: seriesId)
-        if state?.lastReadVolume == nil || state?.lastReadVolume == 0 {
+        if state?.lastReadVolume == nil || highestChapterRead > state?.lastReadChapter ?? 0 {
+            let useChapters = await api.shouldUseChapters(sourceKey: sourceKey, mangaKey: seriesId)
+            let update: TrackUpdate = if useChapters {
+                .init(lastReadChapter: highestChapterRead)
+            } else {
+                .init(lastReadVolume: Int(floor(highestChapterRead)))
+            }
             try await api.update(
                 sourceKey: sourceKey,
                 seriesId: seriesId,
-                update: .init(lastReadVolume: Int(floor(highestChapterRead)))
+                update: update
             )
         }
 

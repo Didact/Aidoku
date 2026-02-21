@@ -23,20 +23,46 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     private var networkObserverId: UUID?
 
     private lazy var loadingAlert: UIAlertController = {
-        let loadingAlert = UIAlertController(title: nil, message: NSLocalizedString("LOADING_ELLIPSIS", comment: ""), preferredStyle: .alert)
+        let loadingAlert = UIAlertController(
+            title: nil,
+            message: NSLocalizedString("LOADING_ELLIPSIS"),
+            preferredStyle: .alert
+        )
         progressView.tintColor = loadingAlert.view.tintColor
         loadingAlert.view.addSubview(progressView)
         loadingAlert.view.addSubview(loadingIndicator)
+
+        progressView.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+
+        let progressViewSidePadding: CGFloat
+        let progressViewBottomPadding: CGFloat
+        let indicatorViewSidePadding: CGFloat
+        if #available(iOS 26.0, *) {
+            progressViewSidePadding = 32
+            progressViewBottomPadding = 16
+            indicatorViewSidePadding = 16
+        } else {
+            progressViewSidePadding = 16
+            progressViewBottomPadding = 8
+            indicatorViewSidePadding = 10
+        }
+
         NSLayoutConstraint.activate([
             progressView.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
-            progressView.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -8),
-            progressView.widthAnchor.constraint(equalTo: loadingAlert.view.widthAnchor, constant: -30)
+            progressView.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -progressViewBottomPadding),
+            progressView.widthAnchor.constraint(equalTo: loadingAlert.view.widthAnchor, constant: -(progressViewSidePadding * 2)),
+
+            loadingIndicator.centerYAnchor.constraint(equalTo: loadingAlert.view.centerYAnchor),
+            loadingIndicator.leadingAnchor.constraint(equalTo: loadingAlert.view.leadingAnchor, constant: indicatorViewSidePadding),
+            loadingIndicator.widthAnchor.constraint(equalToConstant: 50),
+            loadingIndicator.heightAnchor.constraint(equalToConstant: 50)
         ])
         return loadingAlert
     }()
 
     private lazy var loadingIndicator: UIActivityIndicatorView = {
-        let loadingIndicator = UIActivityIndicatorView(frame: CGRect(x: 10, y: 5, width: 50, height: 50))
+        let loadingIndicator = UIActivityIndicatorView(frame: .zero)
         loadingIndicator.style = .medium
         loadingIndicator.tag = 3
         return loadingIndicator
@@ -45,7 +71,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     private lazy var progressView: UIProgressView = {
         let progressView = UIProgressView(frame: .zero)
         progressView.progress = 0
-        progressView.translatesAutoresizingMaskIntoConstraints = false
         return progressView
     }()
 
@@ -100,8 +125,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Library.opensReaderView": false,
                 "Library.unreadChapterBadges": true,
                 "Library.downloadedChapterBadges": true,
-                "Library.pinManga": false,
-                "Library.pinMangaType": 0,
+                "Library.pinTitles": LibraryViewModel.PinType.none.rawValue,
                 "Library.lockLibrary": false,
 
                 "Library.lockedCategories": [String](),
@@ -127,6 +151,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Reader.upscaleMaxHeight": 2000,
                 "Reader.cropBorders": false,
                 "Reader.disableQuickActions": false,
+                "Reader.liveText": false,
                 "Reader.tapZones": "disabled",
                 "Reader.invertTapZones": false,
                 "Reader.animatePageTransitions": true,
@@ -153,6 +178,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "AutomaticBackups.tracking": true,
                 "AutomaticBackups.history": true,
                 "AutomaticBackups.categories": true,
+                "AutomaticBackups.readingSessions": true,
+                "AutomaticBackups.updates": false,
                 "AutomaticBackups.settings": true,
                 "AutomaticBackups.sourceLists": true,
                 "AutomaticBackups.sensitiveSettings": false,
@@ -160,6 +187,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Library.downloadOnlyOnWifi": false,
                 "Library.deleteDownloadAfterReading": false,
                 "Downloads.compress": true,
+                "Downloads.parallel": true,
                 "Downloads.background": true
             ]
         )
@@ -200,6 +228,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         ImagePipeline.shared = pipeline
 
         performMigration()
+        handleChaptersToBeDeleted()
 
         networkObserverId = Reachability.registerConnectionTypeObserver { connectionType in
             switch connectionType {
@@ -243,6 +272,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         guard let networkObserverId else { return }
         Reachability.unregisterConnectionTypeObserver(networkObserverId)
     }
+
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        InterfaceOrientationCoordinator.shared.supportedOrientations
+    }
 }
 
 extension AppDelegate {
@@ -260,10 +293,22 @@ extension AppDelegate {
             UserDefaults.standard.removeObject(forKey: "Browse.showNsfwSources")
         }
 
+        // migrate pin settings
+        if UserDefaults.standard.bool(forKey: "Library.pinManga") {
+            let newValue = switch UserDefaults.standard.integer(forKey: "Library.pinMangaType") {
+                case 0: LibraryViewModel.PinType.unread.rawValue
+                case 1: LibraryViewModel.PinType.updatedChapters.rawValue
+                default: LibraryViewModel.PinType.none.rawValue
+            }
+            UserDefaults.standard.set(newValue, forKey: "Library.pinTitles")
+            UserDefaults.standard.removeObject(forKey: "Library.pinManga")
+            UserDefaults.standard.removeObject(forKey: "Library.pinMangaType")
+        }
+
         UserDefaults.standard.set(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, forKey: "currentVersion")
     }
 
-    func migrateHistory() async {
+    private func migrateHistory() async {
         showLoadingIndicator(style: .progress)
         try? await Task.sleep(nanoseconds: 500 * 1000000)
         await CoreDataManager.shared.migrateChapterHistory(progress: { @Sendable progress in
@@ -272,7 +317,23 @@ extension AppDelegate {
             }
         })
         NotificationCenter.default.post(name: Notification.Name("updateLibrary"), object: nil)
-        hideLoadingIndicator()
+        await hideLoadingIndicator()
+    }
+
+    // delete chapters queued for deletion in last launch
+    func handleChaptersToBeDeleted() {
+        guard
+            let data = UserDefaults.standard.data(forKey: "chaptersToBeDeleted"),
+            let chapterKeys = try? JSONDecoder().decode([ChapterIdentifier].self, from: data)
+        else {
+            return
+        }
+        Task {
+            await DownloadManager.shared.delete(chapters: chapterKeys.map {
+                .init(sourceKey: $0.sourceKey, mangaKey: $0.mangaKey, chapterKey: $0.chapterKey)
+            })
+            UserDefaults.standard.removeObject(forKey: "chaptersToBeDeleted")
+        }
     }
 
     enum LoadingStyle {
@@ -280,6 +341,7 @@ extension AppDelegate {
         case progress
     }
 
+    /// Shows a non-interactive loading indicator.
     func showLoadingIndicator(style: LoadingStyle = .indefinite, completion: (() -> Void)? = nil) {
         switch style {
             case .indefinite:
@@ -291,13 +353,16 @@ extension AppDelegate {
                 loadingIndicator.isHidden = true
                 progressView.isHidden = false
         }
-        visibleViewController?.present(loadingAlert, animated: true, completion: completion)
+        topViewController?.present(loadingAlert, animated: true, completion: completion)
     }
 
-    func hideLoadingIndicator(completion: (() -> Void)? = nil) {
-        loadingAlert.dismiss(animated: true) {
-            self.loadingIndicator.stopAnimating()
-            completion?()
+    /// Dismisses a shown loading indicator.
+    func hideLoadingIndicator(completion: (() -> Void)? = nil) async {
+        await withCheckedContinuation { continuation in
+            loadingAlert.dismiss(animated: true) {
+                self.loadingIndicator.stopAnimating()
+                continuation.resume()
+            }
         }
     }
 
@@ -355,7 +420,7 @@ extension AppDelegate {
             } else {
                 // check for tracker auth callback
                 // this shouldn't really be called since authentication should be performed within the app
-                if let tracker = TrackerManager.shared.trackers.first(where: {
+                if let tracker = TrackerManager.trackers.first(where: {
                     ($0 as? OAuthTracker)?.callbackHost == url.host
                 }) as? OAuthTracker {
                     Task {
@@ -531,7 +596,7 @@ extension AppDelegate {
                             for (mangaId, oldId) in historyChapterIds where newChapterIds[oldId] == nil  {
                                 newChapterIds[oldId] = try? await source.handleMigration(kind: .chapter, mangaKey: mangaId, chapterKey: oldId)
                             }
-                            await CoreDataManager.shared.container.performBackgroundTask { context in
+                            await CoreDataManager.shared.container.performBackgroundTask { [newMangaIds, newChapterIds] context in
                                 let libraryObjects = CoreDataManager.shared.getLibraryManga(sourceId: source.id, context: context)
                                 let chapterObjects = CoreDataManager.shared.getChapters(sourceId: source.id, context: context)
                                 let historyObjects = CoreDataManager.shared.getHistory(sourceId: source.id, context: context)
@@ -560,7 +625,7 @@ extension AppDelegate {
                             NotificationCenter.default.post(name: .updateLibrary, object: nil)
                             NotificationCenter.default.post(name: .updateHistory, object: nil)
 
-                            self.hideLoadingIndicator()
+                            await self.hideLoadingIndicator()
                         }
                     } else {
                         // otherwise, we just show the migration view and let the user do it
@@ -586,6 +651,7 @@ extension AppDelegate {
         message: String? = nil,
         actions: [UIAlertAction] = [],
         textFieldHandlers: [((UITextField) -> Void)] = [],
+        textFieldDisablesLastActionWhenEmpty: Bool = false,
         completion: (() -> Void)? = nil
     ) {
         let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
@@ -593,6 +659,17 @@ extension AppDelegate {
         for handler in textFieldHandlers {
             alertController.addTextField { textField in
                 handler(textField)
+
+                if textFieldDisablesLastActionWhenEmpty && textFieldHandlers.count == 1 {
+                    actions.last?.isEnabled = !(textField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+
+                    NotificationCenter.default.addObserver(forName: UITextField.textDidChangeNotification, object: textField, queue: .main) { _ in
+                        Task { @MainActor in
+                            let text = textField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                            actions.last?.isEnabled = !text.isEmpty
+                        }
+                    }
+                }
             }
         }
 
@@ -611,7 +688,7 @@ extension AppDelegate {
 }
 
 extension AppDelegate: ImagePipelineDelegate {
-    func imageDecoder(for context: ImageDecodingContext, pipeline: ImagePipeline) -> (any ImageDecoding)? {
+    nonisolated func imageDecoder(for context: ImageDecodingContext, pipeline: ImagePipeline) -> (any ImageDecoding)? {
         if context.request.userInfo[.processesKey] as? Bool == true {
             // when using a page processor, don't decode data as an image since it may be invalid
             ImageDecoders.Empty.init()

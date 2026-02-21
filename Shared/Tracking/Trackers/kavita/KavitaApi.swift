@@ -7,7 +7,7 @@
 
 import Foundation
 
-class KavitaApi {
+actor KavitaApi {
     func getState(sourceKey: String, seriesId: String) async throws -> TrackState? {
         let helper = KavitaHelper(sourceKey: sourceKey)
         let volumes: [KavitaVolume] = try await helper.request(path: "/api/Series/volumes?seriesId=\(seriesId)")
@@ -78,7 +78,7 @@ class KavitaApi {
         let response: Response = try await helper.request(path: "/api/reader/chapter-info?chapterId=\(chapterId)")
 
         let pageNum = if progress.completed {
-            response.pages
+            response.pages + 1
         } else {
             progress.page
         }
@@ -95,10 +95,11 @@ class KavitaApi {
             seriesId: seriesId,
             volumeId: response.volumeId,
             chapterId: chapterId,
-            pageNum: pageNum
+            pageNum: pageNum - 1
         )
 
-        let _: Bool = try await helper.request(
+        // newer versions return an empty response instead of a bool, so we ignore the thrown error
+        let _: Bool? = try? await helper.request(
             path: "/api/reader/progress",
             method: .POST,
             body: JSONEncoder().encode(payload)
@@ -120,7 +121,7 @@ class KavitaApi {
                 }
                 progressMap["\(chapter.id)"] = .init(
                     completed: completed,
-                    page: chapter.pagesRead,
+                    page: chapter.pagesRead + 1,
                     date: chapter.lastReadingProgressUtc
                 )
             }

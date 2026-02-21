@@ -65,7 +65,6 @@
 "SORT_BY" = "Sortuj według";
 "DATE_ADDED" = "Dacie Dodania";
 "CATEGORY_ADD_TEXT" = "Wpisz nazwę nowej kategorii.";
-"CATEGORY_TITLE" = "Nazwa Kategorii";
 "BROWSE_NO_SOURCES" = "Brak źródeł";
 "EXTERNAL" = "Zewnętrzne";
 "INFO" = "Informacje";
@@ -157,10 +156,7 @@
 "READER" = "Czytacz";
 "OPEN_READER_VIEW" = "Otwórz okno czytacza";
 "UNREAD_CHAPTER_BADGES" = "Ikonka nieprzeczytanego rozdziału";
-"PIN_MANGA" = "Przypnij mangę";
-"PIN_MANGA_TYPE" = "Rodzaj przypięcia";
-"PIN_MANGA_UNREAD" = "Nieprzeczytane";
-"PIN_MANGA_UPDATED" = "Nowe";
+"PIN_UNREAD" = "Nieprzeczytane";
 "LIBRARY_UPDATING" = "Aktualizacja biblioteki";
 "UPDATE_INTERVAL" = "Częstotliwość aktualizacji";
 "SKIP_TITLES" = "Pomiń wybrane tytuły";
