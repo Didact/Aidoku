@@ -81,32 +81,22 @@ class TabBarController: UITabBarController {
 
         let settingsPath = NavigationCoordinator(rootViewController: nil)
         let settingsViewController: UIViewController
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            // this breaks the zoom transitions from the toolbar buttons in the backups setting page
+        if #available(iOS 26.0, *), UIDevice.current.userInterfaceIdiom != .pad {
+            settingsViewController = UIHostingController(
+                rootView: NavigationStack {
+                    SettingsView()
+                        .environmentObject(settingsPath)
+                }.introspect(.navigationStack, on: .iOS(.v26)) { entity in
+                    settingsPath.rootViewController = entity
+                }
+            )
+        } else {
+            // this breaks the zoom transitions from the toolbar buttons in the backups setting page on ios 18 / ipads
             let hosting = UIHostingController(rootView: SettingsView().environmentObject(settingsPath))
             let entity = NavigationController(rootViewController: hosting)
+            entity.navigationBar.prefersLargeTitles = true
             settingsPath.rootViewController = entity
             settingsViewController = entity
-        } else {
-            if #available(iOS 26.0, *) {
-                settingsViewController = UIHostingController(
-                    rootView: NavigationStack {
-                        SettingsView()
-                            .environmentObject(settingsPath)
-                    }.introspect(.navigationStack, on: .iOS(.v26)) { entity in
-                        settingsPath.rootViewController = entity
-                    }
-                )
-            } else {
-                settingsViewController = UIHostingController(
-                    rootView: NavigationView {
-                        SettingsView()
-                            .environmentObject(settingsPath)
-                    }.introspect(.navigationView(style: .stack), on: .iOS(.v15, .v16, .v17, .v18)) { entity in
-                        settingsPath.rootViewController = entity
-                    }
-                )
-            }
         }
         self.settingsPath = settingsPath
 

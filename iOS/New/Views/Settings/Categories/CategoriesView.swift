@@ -13,27 +13,41 @@ struct CategoriesView: View {
     @State private var categoryTitle: String = ""
     @State private var showRenameFailedAlert = false
 
+    @State private var groupTitles: [String] = []
+
     init() {
         self._categories = State(initialValue: CoreDataManager.shared.getCategoryTitles())
+        self._groupTitles = State(initialValue: CoreDataManager.shared.getCategories(groupsOnly: true).compactMap { $0.title })
     }
 
     var body: some View {
         List {
             ForEach(categories, id: \.self) { category in
-                Text(category)
-                    .swipeActions {
-                        Button(role: .destructive) {
-                            onDelete(at: IndexSet(integer: categories.firstIndex(of: category)!))
-                        } label: {
-                            Label(NSLocalizedString("DELETE"), systemImage: "trash")
-                        }
-                        Button {
-                            showRenamePrompt(targetRenameCategory: category)
-                        } label: {
-                            Label(NSLocalizedString("RENAME"), systemImage: "pencil")
-                        }
-                        .tint(.indigo)
+                HStack {
+                    Text(category)
+                    Spacer()
+                    Button {
+                        showRenamePrompt(targetRenameCategory: category)
+                    } label: {
+                        Image(systemName: "pencil.circle")
+                            .scaleEffect(1.2)
                     }
+                    .buttonStyle(.borderless)
+                    .padding(.trailing, 6)
+                }
+                .contextMenu {
+                    Button {
+                        showRenamePrompt(targetRenameCategory: category)
+                    } label: {
+                        Label(NSLocalizedString("RENAME"), systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        guard let index = categories.firstIndex(of: category) else { return }
+                        onDelete(at: IndexSet(integer: index))
+                    } label: {
+                        Label(NSLocalizedString("DELETE"), systemImage: "trash")
+                    }
+                }
             }
             .onDelete(perform: onDelete)
             .onMove(perform: onMove)
@@ -144,7 +158,7 @@ struct CategoriesView: View {
 
 extension CategoriesView {
     func addCategory(title: String) {
-        if !title.isEmpty, title.lowercased() != "none", !categories.contains(title) {
+        if !title.isEmpty, title.lowercased() != "none", !categories.contains(title), !groupTitles.contains(title) {
             Task {
                 await CoreDataManager.shared.container.performBackgroundTask { context in
                     CoreDataManager.shared.createCategory(title: title, context: context)
@@ -179,7 +193,7 @@ extension CategoriesView {
     }
 
     func renameCategory(title: String, newTitle: String) {
-        if newTitle.lowercased() == "none" || self.categories.contains(newTitle) || newTitle.isEmpty {
+        if newTitle.lowercased() == "none" || categories.contains(newTitle) || groupTitles.contains(newTitle) || newTitle.isEmpty {
             showRenameFailedAlert = true
         } else {
             Task {
@@ -208,5 +222,4 @@ extension CategoriesView {
             }
         }
     }
-
 }

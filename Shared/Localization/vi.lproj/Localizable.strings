@@ -156,7 +156,6 @@
 "APPEARANCE_LIGHT" = "Sáng";
 "APPEARANCE_DARK" = "Tối";
 "USE_SYSTEM_APPEARANCE" = "Dùng giao diện hệ thống";
-"MANGA_PER_ROW" = "Số truyện mỗi dòng";
 "PORTRAIT" = "Dọc";
 "LANDSCAPE" = "Ngang";
 "READER" = "Trình đọc";
@@ -294,7 +293,6 @@
 "PIN" = "Ghim";
 "COVER" = "Bìa";
 "OPTIONS" = "Tùy chọn";
-"TITLES" = "Tiêu đề";
 "COPY" = "Sao chép";
 "UNPIN" = "Bỏ ghim";
 "REORDER" = "Sắp xếp lại";
@@ -303,10 +301,8 @@
 "NOT_FOUND" = "Không tìm thấy";
 "DEFAULT_READING_MODE" = "Chế độ đọc mặc định";
 "BACKUP_ERROR_TEXT" = "Đã gặp lỗi khi khôi phục: %@. Bản sao lưu có thể không hợp lệ.";
-"START_MATCHING" = "Bắt đầu hợp nhất";
 "MIGRATE" = "Chuyển đổi";
 "CROP_BORDERS" = "Xoá viền";
-"MIGRATION" = "Chuyển đổi";
 
 // Manga Updates
 "MANGA_UPDATES" = "Cập nhật";
@@ -658,5 +654,6 @@
 "DISABLE_QUICK_ACTIONS" = "Tắt thao tác nhanh";
 "SOURCE_IMPORT_FAIL_TEXT" = "Nhập nguồn thất bại. Vui lòng đảm bảo tệp aix của bạn hợp lệ.";
 "LIBRARY_ENTRIES" = "Mục trong thư viện";
-"ISOLATE_FIRST_PAGE" = "Luôn tách riêng trang đầu";
 "VOLUME" = "Tập";
+"EDIT" = "Chỉnh sửa";
+"SAVE" = "Lưu";

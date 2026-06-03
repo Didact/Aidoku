@@ -107,14 +107,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         UserDefaults.standard.register(
             defaults: [
-                "isSideloaded": Self.isSideloaded, // for icloud sync setting
+                "Flag.isSideloaded": Self.isSideloaded, // for icloud sync setting
+                "Flag.showedLegacySourceListNotice": false,
 
                 "General.incognitoMode": false,
                 "General.icloudSync": false,
                 "General.appearance": 0,
                 "General.useSystemAppearance": true,
-                "General.portraitRows": UIDevice.current.userInterfaceIdiom == .pad ? 5 : 2,
-                "General.landscapeRows": UIDevice.current.userInterfaceIdiom == .pad ? 6 : 4,
+                "Appearance.layout": "standard",
+                "Appearance.customPortraitRows": UIDevice.current.userInterfaceIdiom == .pad ? 5 : 2,
+                "Appearance.customLandscapeRows": UIDevice.current.userInterfaceIdiom == .pad ? 6 : 4,
 
                 "Library.sortOption": 2, // lastOpened
                 "Library.sortAscending": false,
@@ -123,12 +125,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Library.lastUpdated": Date.distantPast.timeIntervalSince1970,
 
                 "Library.opensReaderView": false,
+                "Library.resumeLastOpenedChapter": false,
                 "Library.unreadChapterBadges": true,
                 "Library.downloadedChapterBadges": true,
                 "Library.pinTitles": LibraryViewModel.PinType.none.rawValue,
                 "Library.lockLibrary": false,
 
                 "Library.lockedCategories": [String](),
+                "Library.showUncategorizedCategory": false,
 
                 "Library.updateInterval": "daily",
                 "Library.skipTitles": ["hasUnread", "completed", "notStarted"],
@@ -151,14 +155,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Reader.upscaleMaxHeight": 2000,
                 "Reader.cropBorders": false,
                 "Reader.disableQuickActions": false,
+                "Reader.disableDoubleTap": false,
                 "Reader.liveText": false,
+                "Reader.hideBarsOnSwipe": false,
                 "Reader.tapZones": "disabled",
                 "Reader.invertTapZones": false,
                 "Reader.animatePageTransitions": true,
                 "Reader.backgroundColor": "black",
                 "Reader.pagesToPreload": 2,
                 "Reader.pagedPageLayout": "auto",
-                "Reader.pagedIsolateFirstPage": false,
+                "Reader.pagedPageOffset": false,
                 "Reader.splitWideImages": false,
                 "Reader.reverseSplitOrder": false,
                 "Reader.verticalInfiniteScroll": true,
@@ -166,6 +172,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 "Reader.pillarboxAmount": 15,
                 "Reader.pillarboxOrientation": "both",
                 "Reader.orientation": "device",
+
+                // Text Reader defaults
+                "Reader.textReaderStyle": "scroll",
+                "Reader.textFontFamily": "System",
+                "Reader.textFontSize": 18,
+                "Reader.textLineSpacing": 8,
+                "Reader.textHorizontalPadding": 24,
 
                 "Tracking.updateAfterReading": true,
                 "Tracking.autoSyncFromTracker": false,
@@ -202,7 +215,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 if !isiCloudAvailable {
                     LogManager.logger.info("iCloud unavailable")
                 }
-                UserDefaults.standard.register(defaults: ["isiCloudAvailable": isiCloudAvailable])
+                UserDefaults.standard.register(defaults: ["Flag.isiCloudAvailable": isiCloudAvailable])
             }
         }
 
@@ -280,8 +293,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 extension AppDelegate {
     func performMigration() {
+        var settingsVersion = UserDefaults.standard.string(forKey: "Flag.currentVersion")
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+
+        if let oldSettingsVersion = UserDefaults.standard.string(forKey: "currentVersion") {
+            settingsVersion = settingsVersion ?? oldSettingsVersion
+            UserDefaults.standard.removeObject(forKey: "currentVersion")
+        }
+
+        guard currentVersion != settingsVersion else {
+            return
+        }
+
+        LogManager.logger.info("Migrating settings from version \(settingsVersion ?? "none") to \(currentVersion ?? "unknown")")
+
         // migrate history to 0.6 format
-        if UserDefaults.standard.string(forKey: "currentVersion") == "0.5" {
+        if settingsVersion == "0.5" {
             Task.detached {
                 await self.migrateHistory()
             }
@@ -305,25 +332,95 @@ extension AppDelegate {
             UserDefaults.standard.removeObject(forKey: "Library.pinMangaType")
         }
 
-        UserDefaults.standard.set(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, forKey: "currentVersion")
+        // migration for 0.8.2
+        if SourceManager.oldDirectory.exists {
+            Task.detached {
+                await self.migrateSources()
+            }
+        }
+
+        // migrate unprefixed settings
+        if UserDefaults.standard.bool(forKey: "downloadChapterSortAscending") {
+            UserDefaults.standard.set(true, forKey: "Flag.downloadChapterSortAscending")
+            UserDefaults.standard.removeObject(forKey: "downloadChapterSortAscending")
+        }
+        if let enabledModelFile = UserDefaults.standard.string(forKey: "enabledModelFile") {
+            UserDefaults.standard.set(enabledModelFile, forKey: "Data.enabledModelFile")
+            UserDefaults.standard.removeObject(forKey: "enabledModelFile")
+        }
+        if let downloadQueueState = UserDefaults.standard.data(forKey: "downloadQueueState") {
+            UserDefaults.standard.set(downloadQueueState, forKey: "Data.downloadQueueState")
+            UserDefaults.standard.removeObject(forKey: "downloadQueueState")
+        }
+        if let chaptersToBeDeleted = UserDefaults.standard.data(forKey: "chaptersToBeDeleted") {
+            UserDefaults.standard.set(chaptersToBeDeleted, forKey: "Data.chaptersToBeDeleted")
+            UserDefaults.standard.removeObject(forKey: "chaptersToBeDeleted")
+        }
+
+        // migrate to layout appearance setting
+        let portraitRows = UserDefaults.standard.integer(forKey: "General.portraitRows")
+        let landscapeRows = UserDefaults.standard.integer(forKey: "General.landscapeRows")
+        let defaultPortraitRows = UIDevice.current.userInterfaceIdiom == .pad ? 5 : 2
+        let defaultLandscapeRows = UIDevice.current.userInterfaceIdiom == .pad ? 6 : 4
+        if portraitRows > 0 && portraitRows != defaultPortraitRows {
+            UserDefaults.standard.set("custom", forKey: "Appearance.layout")
+            UserDefaults.standard.set(portraitRows, forKey: "Appearance.customPortraitRows")
+            UserDefaults.standard.removeObject(forKey: "General.portraitRows")
+        }
+        if landscapeRows > 0 && landscapeRows != defaultLandscapeRows {
+            UserDefaults.standard.set("custom", forKey: "Appearance.layout")
+            UserDefaults.standard.set(landscapeRows, forKey: "Appearance.customLandscapeRows")
+            UserDefaults.standard.removeObject(forKey: "General.landscapeRows")
+        }
+
+        UserDefaults.standard.set(currentVersion, forKey: "Flag.currentVersion")
     }
 
     private func migrateHistory() async {
         showLoadingIndicator(style: .progress)
-        try? await Task.sleep(nanoseconds: 500 * 1000000)
+        try? await Task.sleep(nanoseconds: 500 * 1_000_000)
         await CoreDataManager.shared.migrateChapterHistory(progress: { @Sendable progress in
             Task { @MainActor in
                 self.indicatorProgress = progress
             }
         })
-        NotificationCenter.default.post(name: Notification.Name("updateLibrary"), object: nil)
+        NotificationCenter.default.post(name: .updateLibrary, object: nil)
+        await hideLoadingIndicator()
+    }
+
+    // migration for 0.8.2
+    private func migrateSources() async {
+        showLoadingIndicator(style: .indefinite)
+
+        try? await Task.sleep(nanoseconds: 500 * 1_000_000)
+
+        // migrate tracker token settings
+        for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix("Token.") {
+            UserDefaults.standard.removeObject(forKey: key)
+            UserDefaults.standard.set(value, forKey: key.replacingOccurrences(of: "Token.", with: "Tracker."))
+        }
+
+        // handle lastUpdatedChapters addition
+        await CoreDataManager.shared.container.performBackgroundTask { context in
+            let items = CoreDataManager.shared.getLibraryManga(context: context)
+            // if lastUpdatedChapters is set to the default value, update default to lastUpdated
+            for item in items where item.lastUpdatedChapters.timeIntervalSince1970 == 21600 {
+                item.lastUpdatedChapters = item.lastUpdated
+            }
+        }
+
+        // move all sources in old sources directory to the new one
+        FileManager.default.moveFiles(in: SourceManager.oldDirectory, to: SourceManager.directory)
+        SourceManager.oldDirectory.removeItem()
+        await SourceManager.shared.reloadSources()
+
         await hideLoadingIndicator()
     }
 
     // delete chapters queued for deletion in last launch
     func handleChaptersToBeDeleted() {
         guard
-            let data = UserDefaults.standard.data(forKey: "chaptersToBeDeleted"),
+            let data = UserDefaults.standard.data(forKey: "Data.chaptersToBeDeleted"),
             let chapterKeys = try? JSONDecoder().decode([ChapterIdentifier].self, from: data)
         else {
             return
@@ -332,7 +429,7 @@ extension AppDelegate {
             await DownloadManager.shared.delete(chapters: chapterKeys.map {
                 .init(sourceKey: $0.sourceKey, mangaKey: $0.mangaKey, chapterKey: $0.chapterKey)
             })
-            UserDefaults.standard.removeObject(forKey: "chaptersToBeDeleted")
+            UserDefaults.standard.removeObject(forKey: "Data.chaptersToBeDeleted")
         }
     }
 
@@ -389,25 +486,39 @@ extension AppDelegate {
                     }
                 }
             } else if let host = url.host, let source = SourceManager.shared.source(for: host) {
+                // todo: we should support opening items in library even if the source isn't installed
                 Task { @MainActor in
-                    if url.pathComponents.count > 1 { // /sourceId/mangaId
-                        if let manga = try? await source.getMangaUpdate(
-                            manga: AidokuRunner.Manga(sourceKey: source.id, key: url.pathComponents[1], title: ""),
-                            needsDetails: true,
-                            needsChapters: false
-                        ) {
-                            if let navigationController {
-                                navigationController.pushViewController(
-                                    MangaViewController(
-                                        source: source,
-                                        manga: manga,
-                                        parent: navigationController.topViewController,
-                                        scrollToChapterKey: url.pathComponents[safe: 2] // /sourceId/mangaId/chapterId
-                                    ),
-                                    animated: true
-                                )
-                            }
+                    // support percent encoding characters like "/" for manga and chapter keys
+                    let pathComponents = url.percentEncodedPath
+                        .split(separator: "/")
+                        .map { String($0).removingPercentEncoding ?? String($0) }
+
+                    if !pathComponents.isEmpty { // /sourceId/mangaId
+                        let mangaKey = pathComponents[0].removingPercentEncoding ?? url.pathComponents[1]
+                        guard
+                            let navigationController,
+                            let manga = try? await source.getMangaUpdate(
+                                manga: AidokuRunner.Manga(sourceKey: source.id, key: mangaKey, title: ""),
+                                needsDetails: true,
+                                needsChapters: false
+                            )
+                        else {
+                            return
                         }
+                        let chapterKey = pathComponents[safe: 1]?.removingPercentEncoding ?? pathComponents[safe: 1]
+                        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                        let action = components?.queryItems?.first(where: { $0.name == "action" })?.value.flatMap(MangaView.OpenAction.init)
+
+                        navigationController.pushViewController(
+                            MangaViewController(
+                                source: source,
+                                manga: manga,
+                                parent: navigationController.topViewController,
+                                chapterKey: chapterKey, // /sourceId/mangaId/chapterId
+                                openAction: action // ?action={read,readNext,readLatest}
+                            ),
+                            animated: true
+                        )
                     } else { // /sourceId
                         let vc: UIViewController = if let legacySource = source.legacySource {
                             SourceViewController(source: legacySource)
@@ -488,7 +599,7 @@ extension AppDelegate {
         else { return false }
 
         // ensure sources are loaded
-        await SourceManager.shared.loadSources()
+        await SourceManager.shared.waitForSourcesLoad()
 
         // find source that uses the given url
         var targetSource: AidokuRunner.Source?
@@ -520,14 +631,17 @@ extension AppDelegate {
                         ),
                         needsDetails: true,
                         needsChapters: false
-                    ) else { return false }
+                    ) else {
+                        return false
+                    }
 
                     navigationController.pushViewController(
                         MangaViewController(
                             source: targetSource,
                             manga: manga,
                             parent: navigationController.topViewController,
-                            scrollToChapterKey: link?.chapterKey
+                            chapterKey: link?.chapterKey,
+                            openAction: .read
                         ),
                         animated: true
                     )
@@ -632,13 +746,13 @@ extension AppDelegate {
                         Task {
                             let sourceManga = await CoreDataManager.shared.container.performBackgroundTask { context in
                                 let objects = CoreDataManager.shared.getLibraryManga(sourceId: source.id, context: context)
-                                return objects.compactMap { $0.manga?.toManga() }
+                                return objects.compactMap { $0.manga?.toNewManga() }
                             }
-                            let migrateView = MigrateMangaView(manga: sourceManga, destination: source.id)
-                            self.topViewController?.present(
-                                UIHostingController(rootView: SwiftUINavigationView(rootView: migrateView)),
-                                animated: true
-                            )
+                            if !sourceManga.isEmpty {
+                                let migrateView = MigrateResultsView(targetSources: [source], selectedSeries: sourceManga, forceMigrate: true)
+                                let viewController = SwiftUINavigationViewController(rootView: migrateView, addDismissButton: false)
+                                self.topViewController?.present(viewController, animated: true)
+                            }
                         }
                     }
                 }

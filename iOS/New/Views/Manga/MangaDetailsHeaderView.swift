@@ -48,6 +48,7 @@ struct MangaDetailsHeaderView: View {
     @State private var longHeldSafari = false
     @State private var isTracking = false
     @State private var hasAvailableTrackers = false
+    @State private var showLibraryRemoveConfirm = false
 
     static let coverWidth: CGFloat = 114
 
@@ -295,8 +296,13 @@ struct MangaDetailsHeaderView: View {
                     longHeldBookmark = false
                     return
                 }
-                Task {
-                    await toggleBookmarked()
+                if isTracking {
+                    // show confirm prompt
+                    showLibraryRemoveConfirm = true
+                } else {
+                    Task {
+                        await toggleBookmarked()
+                    }
                 }
             } label: {
                 Image(systemName: "bookmark.fill")
@@ -308,7 +314,7 @@ struct MangaDetailsHeaderView: View {
                     .onEnded { _ in
                         if
                             bookmarked,
-                            !CoreDataManager.shared.getCategories(sorted: false).isEmpty
+                            !CoreDataManager.shared.getCategoryTitles(sorted: false).isEmpty
                         {
                             longHeldBookmark = true
                             path.present(
@@ -321,6 +327,17 @@ struct MangaDetailsHeaderView: View {
                         }
                     }
             )
+            .alert(NSLocalizedString("REMOVE_FROM_LIBRARY_CONFIRM"), isPresented: $showLibraryRemoveConfirm) {
+                Button(NSLocalizedString("CANCEL"), role: .cancel) {}
+                Button(NSLocalizedString("REMOVE"), role: .destructive) {
+                    guard bookmarked else { return }
+                    Task {
+                        await toggleBookmarked()
+                    }
+                }
+            } message: {
+                Text(NSLocalizedString("REMOVE_FROM_LIBRARY_CONFIRM_TEXT"))
+            }
 
             if hasAvailableTrackers {
                 Button {
@@ -409,25 +426,12 @@ struct MangaDetailsHeaderView: View {
             )
             bookmarked = false
         } else {
-            // check if category select should open
-            let categories = CoreDataManager.shared.getCategoryTitles()
-            var shouldAskCategory = !categories.isEmpty
-            if
-                let defaultCategory = UserDefaults.standard.string(forKey: "Library.defaultCategory"),
-                defaultCategory == "none" || categories.contains(defaultCategory)
-            {
-                shouldAskCategory = false
-            }
-            if shouldAskCategory { // open category select view
-                path.present(
-                    UINavigationController(rootViewController: CategorySelectViewController(
-                        manga: manga
-                    ))
-                )
+            if MangaManager.shouldAskForCategories() { // open category select view
+                let viewController = UINavigationController(rootViewController: CategorySelectViewController(manga: manga))
+                path.present(viewController)
             } else { // add to library
                 bookmarked = true
                 await MangaManager.shared.addToLibrary(
-                    sourceId: sourceId,
                     manga: manga,
                     chapters: manga.chapters ?? []
                 )

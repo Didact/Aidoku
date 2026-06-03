@@ -14,15 +14,17 @@ struct BackupsView: View {
 
     @State private var loadedInitialBackupInfo = false
     @State private var targetRestoreBackup: Backup?
+    @State private var targetExportBackup: Backup?
     @State private var showCreateSheet = false
+    @State private var showImportSheet = false
     @State private var showAutoBackupsSheet = false
+    @State private var showImportFailAlert = false
 
     @EnvironmentObject private var path: NavigationCoordinator
 
     @Namespace private var transitionNamespace
 
     private enum SheetID: String {
-        case create
         case autoBackup
     }
 
@@ -57,7 +59,26 @@ struct BackupsView: View {
         .navigationTitle(NSLocalizedString("BACKUPS"))
         .sheet(isPresented: $showCreateSheet) {
             BackupCreateView()
-                .navigationTransitionZoom(sourceID: SheetID.create, in: transitionNamespace)
+        }
+        .sheet(isPresented: $showImportSheet) {
+            DocumentPickerView(
+                allowedContentTypes: [
+                    .init(filenameExtension: "aib")!,
+                    .json
+                ],
+                onDocumentsPicked: { urls in
+                    guard let url = urls.first else {
+                        return
+                    }
+                    Task {
+                        let result = await BackupManager.shared.importBackup(from: url)
+                        if !result {
+                            showImportFailAlert = true
+                        }
+                    }
+                }
+            )
+            .ignoresSafeArea()
         }
         .sheet(isPresented: $showAutoBackupsSheet) {
             AutomaticBackupsView()
@@ -65,6 +86,11 @@ struct BackupsView: View {
         }
         .sheet(item: $targetRestoreBackup) { backup in
             BackupContentView(backup: backup)
+        }
+        .alert(NSLocalizedString("IMPORT_FAIL"), isPresented: $showImportFailAlert) {
+            Button(NSLocalizedString("OK"), role: .cancel) {}
+        } message: {
+            Text(NSLocalizedString("BACKUP_IMPORT_FAIL_TEXT"))
         }
         .onAppear {
             guard !loadedInitialBackupInfo else { return }
@@ -107,12 +133,20 @@ struct BackupsView: View {
     }
 
     var createBackupButton: some View {
-        Button {
-            showCreateSheet = true
+        Menu {
+            Button {
+                showCreateSheet = true
+            } label: {
+                Label(NSLocalizedString("CREATE_BACKUP"), systemImage: "plus")
+            }
+            Button {
+                showImportSheet = true
+            } label: {
+                Label(NSLocalizedString("IMPORT_BACKUP"), systemImage: "square.and.arrow.down")
+            }
         } label: {
             Image(systemName: "plus")
         }
-        .matchedTransitionSourcePlease(id: SheetID.create, in: transitionNamespace)
     }
 
     @available(iOS 26.0, *)
@@ -183,11 +217,21 @@ struct BackupsView: View {
         }
         .contextMenu {
             Button {
-                export(url: url)
+                targetExportBackup = backup
             } label: {
                 Label(NSLocalizedString("EXPORT"), systemImage: "square.and.arrow.up")
             }
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onChange(of: targetExportBackup) { newValue in
+                        if newValue == backup {
+                            export(url: url, sourceRect: geo.frame(in: .global))
+                        }
+                    }
+            }
+        )
     }
 
     var automaticBadge: some View {
@@ -260,10 +304,11 @@ extension BackupsView {
         }
     }
 
-    func export(url: URL) {
+    func export(url: URL, sourceRect: CGRect) {
         let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         guard let sourceView = path.rootViewController?.view else { return }
         vc.popoverPresentationController?.sourceView = sourceView
+        vc.popoverPresentationController?.sourceRect = sourceRect
         path.present(vc)
     }
 }

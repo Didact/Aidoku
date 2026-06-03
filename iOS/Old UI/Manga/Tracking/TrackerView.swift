@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SafariServices
+import UIKit
 
 struct TrackerView: View {
     let tracker: Tracker
@@ -30,6 +31,7 @@ struct TrackerView: View {
 
     @State var safariUrl: URL?
     @State var showSafari = false
+    @State var chapterOffset = 0
 
     var body: some View {
         VStack {
@@ -70,11 +72,26 @@ struct TrackerView: View {
                         )
                     }
                     Button {
-                        NotificationCenter.default.post(name: Notification.Name("syncTrackItem"), object: item)
+                        NotificationCenter.default.post(name: .syncTrackItem, object: item)
                     } label: {
                         Label(
                             NSLocalizedString("SYNC_LOCAL_HISTORY", comment: ""),
                             systemImage: "clock.arrow.circlepath"
+                        )
+                    }
+                    Menu {
+                        Button {
+                            showOffsetPicker()
+                        } label: {
+                            Label(
+                                NSLocalizedString("SET_TRACK_CHAPTER_OFFSET"),
+                                systemImage: "number"
+                            )
+                        }
+                    } label: {
+                        Label(
+                            NSLocalizedString("ADVANCED"),
+                            systemImage: "slider.horizontal.3"
                         )
                     }
                 } label: {
@@ -193,6 +210,7 @@ struct TrackerView: View {
             }
 
             withAnimation {
+                chapterOffset = item.chapterOffset
                 score = state.score != nil ? info.scoreType == .tenPointDecimal ? Float(state.score!) / 10 : Float(state.score!) : nil
                 scoreOption = newScoreOption
                 statusOption = info.supportedStatuses
@@ -225,19 +243,66 @@ struct TrackerView: View {
             SafariView(url: $safariUrl)
         }
     }
+
+    func showOffsetPicker() {
+        let maxValue = 500
+        let minValue = -500
+        let coordinator = TrackerOffsetPickerCoordinator(minValue: minValue, maxValue: maxValue)
+        coordinator.pickerView.selectRow(chapterOffset - minValue, inComponent: 0, animated: false)
+
+        let alert = UIAlertController(
+            title: NSLocalizedString("SET_TRACK_CHAPTER_OFFSET"),
+            message: NSLocalizedString("TRACK_CHAPTER_OFFSET_TEXT") + "\n\n\n\n\n\n\n\n",
+            preferredStyle: .alert
+        )
+
+        alert.view.addSubview(coordinator.pickerView)
+
+        coordinator.pickerView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            coordinator.pickerView.centerXAnchor.constraint(equalTo: alert.view.centerXAnchor),
+            coordinator.pickerView.centerYAnchor.constraint(equalTo: alert.view.centerYAnchor, constant: 35),
+            coordinator.pickerView.widthAnchor.constraint(equalToConstant: 250),
+            coordinator.pickerView.heightAnchor.constraint(equalToConstant: 140)
+        ])
+
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK"), style: .default) { _ in
+            let selectedRow = coordinator.pickerView.selectedRow(inComponent: 0)
+            let value = minValue + selectedRow
+            guard value != chapterOffset else { return }
+            chapterOffset = value
+            Task {
+                await TrackerManager.shared.setTrackChapterOffset(item: item, chapterOffset: value)
+            }
+        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("CANCEL"), style: .cancel, handler: nil))
+
+        (UIApplication.shared.delegate as? AppDelegate)?.visibleViewController?.present(alert, animated: true)
+    }
 }
 
-struct SafariView: UIViewControllerRepresentable {
-    @Binding var url: URL?
+private final class TrackerOffsetPickerCoordinator: NSObject, UIPickerViewDelegate, UIPickerViewDataSource {
+    let minValue: Int
+    let maxValue: Int
+    let pickerView = UIPickerView(frame: CGRect(x: 10, y: 48, width: 250, height: 140))
 
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        let url = if let url, url.scheme == "http" || url.scheme == "https" {
-            url
-        } else {
-            URL(string: "about:blank")!
-        }
-        return SFSafariViewController(url: url)
+    init(minValue: Int, maxValue: Int) {
+        self.minValue = minValue
+        self.maxValue = maxValue
+        super.init()
+        pickerView.delegate = self
+        pickerView.dataSource = self
     }
 
-    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+    func numberOfComponents(in pickerView: UIPickerView) -> Int {
+        1
+    }
+
+    func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
+        maxValue - minValue + 1
+    }
+
+    func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
+        String(minValue + row)
+    }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 private struct ServerCheck: Hashable {
     let canLoginBasic: Bool
+    var canLoginApiKey: Bool = false
     var canLoginOIDC: Bool = false
     var oidcLoginURL: URL?
 }
@@ -26,13 +27,22 @@ struct SelfHostedSourceSetupView: View {
     let demoInfo: String
 
     private let checkHandler: (String) async -> ServerCheck
-    private let logInHandler: (String, String, String, String) async -> Bool
-    private let oidcLogInHandler: ((String, String, [HTTPCookie]) async -> Bool)?
+    private let logInHandler: (String, URL, String, String) async -> Bool
+    private let apiKeyLogInHandler: ((String, URL, String) async -> Bool)?
+    private let oidcLogInHandler: ((String, URL, [HTTPCookie]) async -> Bool)?
 
     @State private var name: String
     @State private var server: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var apiKey: String = ""
+    @State private var loginMethod: LoginMethod = .apiKey
+
+    enum LoginMethod {
+        case apiKey
+        case basic
+        case oidc
+    }
 
     private enum ViewState: Equatable {
         case initial
@@ -95,8 +105,9 @@ struct SelfHostedSourceSetupView: View {
         demoTitle: String,
         demoInfo: String,
         checkServer: @escaping (String) async -> ServerCheck,
-        logIn: @escaping (String, String, String, String) async -> Bool,
-        oidcLogIn: ((String, String, [HTTPCookie]) async -> Bool)? = nil
+        logIn: @escaping (String, URL, String, String) async -> Bool,
+        apiKeyLogIn: ((String, URL, String) async -> Bool)? = nil,
+        oidcLogIn: ((String, URL, [HTTPCookie]) async -> Bool)? = nil
     ) {
         self.icon = icon
         self.title = title
@@ -109,6 +120,7 @@ struct SelfHostedSourceSetupView: View {
         self.demoInfo = demoInfo
         self.checkHandler = checkServer
         self.logInHandler = logIn
+        self.apiKeyLogInHandler = apiKeyLogIn
         self.oidcLogInHandler = oidcLogIn
 
         // find unique default name
@@ -127,7 +139,6 @@ struct SelfHostedSourceSetupView: View {
 
     var body: some View {
         let isLoading = state == .loading || isLoadingLoginState
-        let submitDisabled = submitDisabled
         List {
             Section {
                 SettingHeaderView(
@@ -186,8 +197,42 @@ struct SelfHostedSourceSetupView: View {
             }
 
             if let check = loginCheck {
-                if check.canLoginBasic {
+                let hasMultipleLoginMethods = [check.canLoginBasic, check.canLoginApiKey, check.canLoginOIDC].filter({ $0 }).count > 1
+                if hasMultipleLoginMethods {
                     Section(NSLocalizedString("LOGIN")) {
+                        Picker(NSLocalizedString("LOGIN_METHOD"), selection: $loginMethod) {
+                            if check.canLoginApiKey {
+                                Text(NSLocalizedString("API_KEY")).tag(LoginMethod.apiKey)
+                            }
+                            if check.canLoginBasic {
+                                Text(NSLocalizedString("BASIC")).tag(LoginMethod.basic)
+                            }
+                            if check.canLoginOIDC && check.oidcLoginURL != nil {
+                                Text(NSLocalizedString("OIDC")).tag(LoginMethod.oidc)
+                            }
+                        }
+                    }
+                }
+                if check.canLoginApiKey && (!hasMultipleLoginMethods || loginMethod == .apiKey) {
+                    Section {
+                        TextField(NSLocalizedString("API_KEY"), text: $apiKey)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .onSubmit {
+                                if !submitDisabled {
+                                    submit()
+                                }
+                            }
+                            .disabled(isLoading)
+                    } header: {
+                        if !hasMultipleLoginMethods {
+                            Text(NSLocalizedString("LOGIN"))
+                        }
+                    }
+                }
+                if check.canLoginBasic && (!hasMultipleLoginMethods || loginMethod == .basic) {
+                    Section {
                         Group {
                             if useEmail {
                                 TextField(NSLocalizedString("EMAIL"), text: $username)
@@ -214,9 +259,13 @@ struct SelfHostedSourceSetupView: View {
                                 }
                             }
                             .disabled(isLoading)
+                    } header: {
+                        if !hasMultipleLoginMethods {
+                            Text(NSLocalizedString("LOGIN"))
+                        }
                     }
                 }
-                if check.canLoginOIDC, let loginURL = check.oidcLoginURL {
+                if check.canLoginOIDC && (!hasMultipleLoginMethods || loginMethod == .oidc), let loginURL = check.oidcLoginURL {
                     Section {
                         Button(NSLocalizedString("LOGIN_VIA_OIDC")) {
                             showLoginSheet = true
@@ -301,7 +350,13 @@ struct SelfHostedSourceSetupView: View {
         server.isEmpty || name.isEmpty
             || !uniqueName || !uniqueServer
             || state == .loading || isLoadingLoginState
-            || (isLogInState && (username.isEmpty || password.isEmpty))
+            || (
+                isLogInState && (
+                    (loginMethod == .basic && (username.isEmpty || password.isEmpty))
+                        || (loginMethod == .apiKey && apiKey.isEmpty)
+                        || loginMethod == .oidc
+                )
+            )
     }
 
     func submit() {
@@ -350,6 +405,14 @@ struct SelfHostedSourceSetupView: View {
             return
         }
 
+        if serverCheck.canLoginApiKey {
+            loginMethod = .apiKey
+        } else if serverCheck.canLoginBasic {
+            loginMethod = .basic
+        } else {
+            loginMethod = .oidc
+        }
+
         state = .logIn(serverCheck)
     }
 
@@ -363,10 +426,18 @@ struct SelfHostedSourceSetupView: View {
         // trim whitespace (again, in case name was changed)
         name = name.trimmingCharacters(in: .whitespaces)
 
+        guard let serverURL = server.urlWithTrailingSlash() else {
+            state = .logIn(check)
+            error = .connection
+            return
+        }
+
         let didLogIn = if !cookies.isEmpty, let oidcLogInHandler {
-            await oidcLogInHandler(name, server, cookies)
+            await oidcLogInHandler(name, serverURL, cookies)
+        } else if loginMethod == .apiKey, let apiKeyLogInHandler {
+            await apiKeyLogInHandler(name, serverURL, apiKey)
         } else {
-            await logInHandler(name, server, username, password)
+            await logInHandler(name, serverURL, username, password)
         }
 
         guard didLogIn else {
@@ -387,7 +458,7 @@ struct KomgaSetupView: View {
             sourceName: NSLocalizedString("KOMGA"),
             info: NSLocalizedString("KOMGA_INFO"),
             learnMoreUrl: URL(string: "https://komga.org/docs/introduction"),
-            sourceKeyPrefix: "komga.",
+            sourceKeyPrefix: KomgaSourceRunner.sourceKeyPrefix,
             useEmail: true,
             demoServer: "https://demo.komga.org",
             demoTitle: NSLocalizedString("DEMO_KOMGA_SERVER"),
@@ -413,9 +484,9 @@ struct KomgaSetupView: View {
         return ServerCheck(canLoginBasic: true)
     }
 
-    private func logIn(name: String, server: String, username: String, password: String) async -> Bool {
+    private func logIn(name: String, server: URL, username: String, password: String) async -> Bool {
         // request the user info endpoint to ensure we can authenticate
-        guard let testUrl = URL(string: server + "/api/v2/users/me") else {
+        guard let testUrl = URL(string: "api/v2/users/me", relativeTo: server) else {
             return false
         }
 
@@ -446,6 +517,8 @@ struct KomgaSetupView: View {
 }
 
 struct KavitaSetupView: View {
+    static let demoServer = "https://demo.kavitareader.com"
+
     var body: some View {
         SelfHostedSourceSetupView(
             icon: Image(.kavita),
@@ -453,13 +526,14 @@ struct KavitaSetupView: View {
             sourceName: NSLocalizedString("KAVITA"),
             info: NSLocalizedString("KAVITA_INFO"),
             learnMoreUrl: URL(string: "https://wiki.kavitareader.com/getting-started/"),
-            sourceKeyPrefix: "kavita.",
+            sourceKeyPrefix: KavitaSourceRunner.sourceKeyPrefix,
             useEmail: false,
-            demoServer: "https://demo.kavitareader.com",
+            demoServer: Self.demoServer,
             demoTitle: NSLocalizedString("DEMO_KAVITA_SERVER"),
             demoInfo: NSLocalizedString("DEMO_KAVITA_SERVER_INFO"),
             checkServer: check(server:),
             logIn: logIn(name:server:username:password:),
+            apiKeyLogIn: logIn(name:server:apiKey:),
             oidcLogIn: logIn(name:server:cookies:)
         )
     }
@@ -473,10 +547,13 @@ struct KavitaSetupView: View {
             return ServerCheck(canLoginBasic: false)
         }
 
+        // ensure we can reach kavita api from server
         let check: Bool? = try? await URLSession.shared.object(from: testUrl)
         guard check == true else {
             return ServerCheck(canLoginBasic: false)
         }
+
+        let canLoginApiKey = server != Self.demoServer // disable api key login for demo server since it isn't accessible
 
         struct OIDCResponse: Decodable {
             let disablePasswordAuthentication: Bool
@@ -487,6 +564,7 @@ struct KavitaSetupView: View {
         if let response {
             return ServerCheck(
                 canLoginBasic: !response.disablePasswordAuthentication,
+                canLoginApiKey: canLoginApiKey,
                 canLoginOIDC: response.enabled,
                 oidcLoginURL: URL(string: server + "/oidc/login?returnURL=aidoku://oidc-auth")
             )
@@ -494,18 +572,20 @@ struct KavitaSetupView: View {
 
         return ServerCheck(
             canLoginBasic: true,
+            canLoginApiKey: canLoginApiKey,
             canLoginOIDC: false,
             oidcLoginURL: nil
         )
     }
 
-    private func logIn(name: String, server: String, username: String, password: String) async -> Bool {
-        let response = await Self.getLoginResponse(server: server, username: username, password: password)
+    private func logIn(name: String, server: URL, username: String, password: String) async -> Bool {
+        let response = await KavitaSourceRunner.getLoginResponse(server: server, username: username, password: password)
 
         guard
             let response,
             let token = response.token,
             let refreshToken = response.refreshToken,
+            let apiKey = response.getApiKey(),
             response.username == username
         else {
             return false
@@ -519,15 +599,41 @@ struct KavitaSetupView: View {
             password: password
         )
 
-        UserDefaults.standard.setValue(response.apiKey, forKey: "\(key).apiKey")
+        UserDefaults.standard.setValue(apiKey, forKey: "\(key).apiKey")
         UserDefaults.standard.setValue(token, forKey: "\(key).token")
         UserDefaults.standard.setValue(refreshToken, forKey: "\(key).refreshToken")
 
         return true
     }
 
-    private func logIn(name: String, server: String, cookies: [HTTPCookie]) async -> Bool {
-        let response = await Self.getLoginResponse(server: server, cookies: cookies)
+    private func logIn(name: String, server: URL, apiKey: String) async -> Bool {
+        let response = await KavitaSourceRunner.getLoginResponse(server: server, apiKey: apiKey)
+
+        guard
+            let response,
+            let token = response.token,
+            let refreshToken = response.refreshToken,
+            let apiKey = response.getApiKey()
+        else {
+            return false
+        }
+
+        let key = await SourceManager.shared.createCustomSource(
+            kind: .kavita,
+            name: name,
+            server: server
+        )
+
+        UserDefaults.standard.setValue(apiKey, forKey: "\(key).login_key") // populate api key source setting
+        UserDefaults.standard.setValue(apiKey, forKey: "\(key).apiKey")
+        UserDefaults.standard.setValue(token, forKey: "\(key).token")
+        UserDefaults.standard.setValue(refreshToken, forKey: "\(key).refreshToken")
+
+        return true
+    }
+
+    private func logIn(name: String, server: URL, cookies: [HTTPCookie]) async -> Bool {
+        let response = await KavitaSourceRunner.getLoginResponse(server: server, cookies: cookies)
 
         guard let response, let cookie = response.cookie else { return false }
 
@@ -538,18 +644,10 @@ struct KavitaSetupView: View {
         )
 
         UserDefaults.standard.setValue("logged_in", forKey: "\(key).login_oidc")
-        UserDefaults.standard.setValue(response.apiKey, forKey: "\(key).apiKey")
+        UserDefaults.standard.setValue(response.getApiKey(), forKey: "\(key).apiKey")
         UserDefaults.standard.setValue(cookie, forKey: "\(key).cookie")
 
         return true
-    }
-
-    static func getLoginResponse(server: String, username: String, password: String) async -> KavitaSourceRunner.LoginResponse? {
-        await KavitaSourceRunner.getLoginResponse(server: server, username: username, password: password)
-    }
-
-    static func getLoginResponse(server: String, cookies: [HTTPCookie]) async -> KavitaSourceRunner.LoginResponse? {
-        await KavitaSourceRunner.getLoginResponse(server: server, cookies: cookies)
     }
 }
 

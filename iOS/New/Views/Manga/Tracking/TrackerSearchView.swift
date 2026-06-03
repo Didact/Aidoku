@@ -21,6 +21,8 @@ struct TrackerSearchView: View {
     @State private var results: [TrackSearchItem] = []
     @State private var selectedItem: String?
     @State private var searchTask: Task<Void, Never>?
+    @State private var safariUrl: URL?
+    @State private var showSafari = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -33,28 +35,43 @@ struct TrackerSearchView: View {
 
     var body: some View {
         PlatformNavigationStack {
-            Group {
-                if loading {
-                    ProgressView().progressViewStyle(.circular)
-                } else {
-                    List {
-                        ForEach(results, id: \.id) { item in
-                            Button {
-                                if selectedItem == item.id {
-                                    selectedItem = nil
-                                } else {
-                                    selectedItem = item.id
-                                }
-                            } label: {
-                                TrackerSearchItemCell(item: item, selected: selectedItem == item.id)
+            List {
+                ForEach(results, id: \.id) { item in
+                    Button {
+                        if selectedItem == item.id {
+                            selectedItem = nil
+                        } else {
+                            selectedItem = item.id
+                        }
+                    } label: {
+                        TrackerSearchItemCell(item: item, selected: selectedItem == item.id)
+                    }
+                    .offsetListSeparator()
+                    .contextMenu {
+                        Button {
+                            Task {
+                                safariUrl = await tracker.getUrl(trackId: item.id)
+                                guard safariUrl != nil else { return }
+                                showSafari = true
                             }
-                            .offsetListSeparator()
+                        } label: {
+                            Label(
+                                NSLocalizedString("VIEW_ON_WEBSITE"),
+                                systemImage: "safari"
+                            )
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollDismissesKeyboardImmediately()
                 }
             }
+            .listStyle(.plain)
+            .overlay {
+                if loading {
+                    ProgressView().progressViewStyle(.circular)
+                }
+            }
+            .scrollDismissesKeyboardImmediately()
+            .scrollBackgroundHiddenPlease()
+            .background(Color(uiColor: .systemBackground))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     CloseButton {
@@ -80,17 +97,11 @@ struct TrackerSearchView: View {
                     view
                 }
             }
-            .animation(.default, value: loading)
+            .sheet(isPresented: $showSafari) {
+                SafariView(url: $safariUrl)
+            }
             .animation(.default, value: results)
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                do {
-                    results = try await tracker.search(for: manga, includeNsfw: includeNsfw)
-                } catch {
-                    LogManager.logger.error("Failed to search tracker \(tracker.id): \(error)")
-                }
-                loading = false
-            }
             .onChange(of: query) { _ in
                 guard !query.isEmpty else {
                     results = []
@@ -108,7 +119,7 @@ struct TrackerSearchView: View {
                 hidesNavigationBarDuringPresentation: false,
                 hidesSearchBarWhenScrolling: false,
                 bookmarkIcon: UIImage(systemName: "slider.horizontal.3")?
-                    .withTintColor(.tintColor, renderingMode: .alwaysOriginal),
+                    .withTintColor(.tintColor, renderingMode: .alwaysOriginal), // doesn't work ios 26
                 onSubmit: {
                     if query.isEmpty {
                         results = []
@@ -120,6 +131,16 @@ struct TrackerSearchView: View {
                     showSearchOptions = true
                 }
             )
+            .task {
+                do {
+                    results = try await tracker.search(for: manga, includeNsfw: includeNsfw)
+                } catch {
+                    LogManager.logger.error("Failed to search tracker \(tracker.id): \(error)")
+                }
+                withAnimation {
+                    loading = false
+                }
+            }
         }
     }
 

@@ -26,8 +26,26 @@ actor BackupManager {
 
     private static let excludedSettings = [
         "Browse.sourceLists", // stored separately
-        "isiCloudAvailable",
-        "isSideloaded"
+        "General.icloudSync"
+    ]
+    static let excludedSettingsPrefixes = [
+        "Flag",
+        "Data"
+    ]
+    static let allowedSettingsPrefixes = [
+        "General",
+        "Library",
+        "Browse",
+        "History",
+        "Reader",
+        "Tracker",
+        "Tracking",
+        "AutomaticBackups",
+        "Downloads",
+        "Manga",
+        "Logs",
+        "Search",
+        "Token"
     ]
 
     func save(backup: Backup, url: URL? = nil) {
@@ -135,18 +153,16 @@ actor BackupManager {
             } else {
                 []
             }
-            let categories: [String] = if options.categories {
-                CoreDataManager.shared.getCategoryTitles(context: context)
+            let categories: [BackupCategory] = if options.categories {
+                CoreDataManager.shared.getCategories(context: context).compactMap(BackupCategory.init)
             } else {
                 []
             }
-            let sources = CoreDataManager.shared.getSources(context: context).compactMap {
-                $0.id
-            }
+            let sources: [BackupSource] = CoreDataManager.shared.getSources(context: context).compactMap(BackupSource.init)
             let sourceLists = options.sourceLists ? SourceManager.shared.sourceListsStrings : []
 
             let settings: [String: JsonAnyValue]? = if options.settings {
-                self.exportSettings(includeSensitive: options.sensitiveSettings)
+                self.exportSettings(includeSensitive: options.sensitiveSettings, sourceKeys: sources.map(\.id))
             } else {
                 nil
             }
@@ -170,7 +186,7 @@ actor BackupManager {
         }
     }
 
-    private nonisolated func exportSettings(includeSensitive: Bool) -> [String: JsonAnyValue] {
+    private nonisolated func exportSettings(includeSensitive: Bool, sourceKeys: [String]) -> [String: JsonAnyValue] {
         var allSettings = UserDefaults.standard.dictionaryRepresentation()
 
         // filter out potentially sensitive info
@@ -185,7 +201,10 @@ actor BackupManager {
 
         // convert to export compatible types
         for (key, value) in allSettings {
-            guard !Self.excludedSettings.contains(key) else {
+            guard
+                Self.allowedSettingsPrefixes.contains(where: { key.hasPrefix($0) }) || sourceKeys.contains(where: { key.hasPrefix($0) }),
+                !Self.excludedSettings.contains(key)
+            else {
                 continue
             }
             if let value = value as? String {
@@ -213,7 +232,10 @@ actor BackupManager {
     func removeBackup(url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
+}
 
+// MARK: Restoring
+extension BackupManager {
     enum BackupError: Error {
         case manga
         case categories
@@ -223,6 +245,7 @@ actor BackupManager {
         case sessions
         case updates
         case track
+        case sources
 
         var stringValue: String {
             switch self {
@@ -234,6 +257,7 @@ actor BackupManager {
                 case .sessions: NSLocalizedString("READING_SESSIONS")
                 case .updates: NSLocalizedString("UPDATES")
                 case .track: NSLocalizedString("TRACKERS")
+                case .sources: NSLocalizedString("SOURCES")
             }
         }
     }
@@ -255,15 +279,28 @@ actor BackupManager {
         Task {
             // restore settings
             if let settings = backup.settings {
+                // only restore source settings for sources installed, or built-in sources that will be added from the backup restore
+                var sourceKeyPrefixes = SourceManager.shared.sources.map { "\($0.key)." }
+                for additionalSource in backup.sources ?? [] where additionalSource.config != nil {
+                    sourceKeyPrefixes.append("\(additionalSource.id).")
+                }
                 for (key, value) in settings {
-                    guard !Self.excludedSettings.contains(key) else { continue }
+                    let hasAllowedPrefix = Self.allowedSettingsPrefixes.contains(where: { key.hasPrefix($0) })
+                        || sourceKeyPrefixes.contains(where: { key.hasPrefix($0) })
+                    guard
+                        hasAllowedPrefix,
+                        !Self.excludedSettings.contains(key),
+                        !Self.excludedSettingsPrefixes.contains(where: { key.hasPrefix($0) })
+                    else {
+                        continue
+                    }
                     UserDefaults.standard.set(value.toRaw(), forKey: key)
                 }
             }
 
             // restore source lists
-            SourceManager.shared.clearSourceLists()
             guard let sourceLists = backup.sourceLists else { return }
+            SourceManager.shared.clearSourceLists()
             for sourceList in sourceLists {
                 guard let sourceListURL = URL(string: sourceList) else { continue }
                 _ = await SourceManager.shared.addSourceList(url: sourceListURL)
@@ -294,7 +331,7 @@ actor BackupManager {
                 let result = await CoreDataManager.shared.container.performBackgroundTask { context in
                     CoreDataManager.shared.clearCategories(context: context)
                     for category in backupCategories {
-                        CoreDataManager.shared.createCategory(title: category, context: context)
+                        _ = category.toObject(context: context)
                     }
                     do {
                         try context.save()
@@ -467,6 +504,31 @@ actor BackupManager {
                 }
             }
         }
+        let sourceTask = Task {
+            if let sourceItems = backup.sources {
+                let (result, needsRefresh) = await CoreDataManager.shared.container.performBackgroundTask { context in
+                    var needsRefresh = false
+                    for item in sourceItems {
+                        guard item.config != nil else { continue }
+                        CoreDataManager.shared.removeSource(id: item.id, context: context)
+                        _ = item.toObject(context: context)
+                        needsRefresh = true
+                    }
+                    do {
+                        try context.save()
+                        return (true, needsRefresh)
+                    } catch {
+                        return (false, false)
+                    }
+                }
+                if !result {
+                    throw BackupError.sources
+                }
+                if needsRefresh {
+                    await SourceManager.shared.reloadSources()
+                }
+            }
+        }
 
         var backupError: Error?
 
@@ -475,6 +537,7 @@ actor BackupManager {
             try await updatesTask.value
             try await sessionsTask.value
             try await trackTask.value
+            try await sourceTask.value
         } catch {
             backupError = error
         }
@@ -485,7 +548,6 @@ actor BackupManager {
         NotificationCenter.default.post(name: .updateLibrary, object: nil)
 
 #if !os(macOS)
-
         await Task { @MainActor [backupError] in
             let delegate = UIApplication.shared.delegate as? AppDelegate
             await delegate?.hideLoadingIndicator()
@@ -493,25 +555,23 @@ actor BackupManager {
             UIApplication.shared.isIdleTimerDisabled = false
 
             if let backupError {
-                Task {
-                    // show error alert
-                    delegate?.presentAlert(
-                        title: NSLocalizedString("BACKUP_ERROR"),
-                        message: String(
-                            format: NSLocalizedString("BACKUP_ERROR_TEXT"),
-                            (backupError as? BackupError)?.stringValue ?? NSLocalizedString("UNKNOWN")
-                        )
+                // show error alert
+                delegate?.presentAlert(
+                    title: NSLocalizedString("BACKUP_ERROR"),
+                    message: String(
+                        format: NSLocalizedString("BACKUP_ERROR_TEXT"),
+                        (backupError as? BackupError)?.stringValue ?? NSLocalizedString("UNKNOWN")
                     )
-                }
+                )
             } else {
                 // show missing sources alert if there are any
                 let missingSources = (backup.sources ?? []).filter {
-                    !CoreDataManager.shared.hasSource(id: $0)
+                    !CoreDataManager.shared.hasSource(id: $0.id)
                 }
                 if !missingSources.isEmpty {
                     delegate?.presentAlert(
                         title: NSLocalizedString("MISSING_SOURCES"),
-                        message: NSLocalizedString("MISSING_SOURCES_TEXT") + missingSources.map { "\n- \($0)" }.joined()
+                        message: NSLocalizedString("MISSING_SOURCES_TEXT") + missingSources.map { "\n- \($0.id)" }.joined()
                     )
                 }
             }
@@ -522,6 +582,7 @@ actor BackupManager {
     }
 }
 
+// MARK: Automatic Backups
 extension BackupManager {
     nonisolated func register() {
 #if !os(macOS) && !targetEnvironment(simulator)
@@ -536,9 +597,7 @@ extension BackupManager {
         }
 #endif
     }
-}
 
-extension BackupManager {
     func scheduleAutoBackup() {
         guard UserDefaults.standard.bool(forKey: "AutomaticBackups.enabled") else {
 #if !os(macOS) && !targetEnvironment(simulator)

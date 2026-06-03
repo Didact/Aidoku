@@ -11,7 +11,8 @@ import SwiftUI
 import WebKit
 
 struct SettingsView: View {
-    @State private var categories: [String]
+    @State private var categoriesOnly: [String]
+    @State private var categoriesAndGroups: [String]
 
     @State private var searchText: String = ""
     @State private var searchResult: SettingSearchResult?
@@ -21,7 +22,8 @@ struct SettingsView: View {
     static let settings = Settings.settings
 
     init() {
-        self._categories = State(initialValue: CoreDataManager.shared.getCategoryTitles())
+        self._categoriesOnly = State(initialValue: CoreDataManager.shared.getCategoryTitles())
+        self._categoriesAndGroups = State(initialValue: CoreDataManager.shared.getCategoryTitles(excludeFilterGroups: false))
     }
 }
 
@@ -125,10 +127,11 @@ extension SettingsView {
             search()
         }
         .onReceive(NotificationCenter.default.publisher(for: .updateCategories)) { _ in
-            categories = CoreDataManager.shared.getCategoryTitles()
+            categoriesOnly = CoreDataManager.shared.getCategoryTitles()
+            categoriesAndGroups = CoreDataManager.shared.getCategoryTitles(excludeFilterGroups: false)
             if
                 let selected = UserDefaults.standard.string(forKey: "Library.defaultCategory"),
-                !selected.isEmpty && selected != "none" && !categories.contains(selected)
+                !selected.isEmpty && selected != "none" && !categoriesOnly.contains(selected)
             {
                 UserDefaults.standard.removeObject(forKey: "Library.defaultCategory")
             }
@@ -282,6 +285,8 @@ extension SettingsView {
     func pageContentHandler(_ key: String) -> (some View)? {
         if key == "Library.categories" {
             CategoriesView()
+        } else if key == "Library.filterGroups" {
+            FilterGroupsView()
         } else if key == "Reader.tapZones" {
             TapZonesSelectView()
         } else if key == "Reader.upscalingModels" {
@@ -303,14 +308,16 @@ extension SettingsView {
 
     @ViewBuilder
     func customContentHandler(_ setting: Setting) -> some View {
-        if setting.key == "Library.defaultCategory" {
+        if setting.key == "Appearance.layout" {
+            LayoutSettingView()
+        } else if setting.key == "Library.defaultCategory" {
             let newSetting = {
                 var setting = setting
                 setting.value = .select(.init(
-                    values: ["", "none"] + categories,
+                    values: ["", "none"] + categoriesOnly,
                     titles: [
                         NSLocalizedString("ALWAYS_ASK"), NSLocalizedString("NONE")
-                    ] + categories
+                    ] + categoriesOnly
                 ))
                 return setting
             }()
@@ -318,14 +325,14 @@ extension SettingsView {
         } else if setting.key == "Library.lockedCategories" {
             let newSetting = {
                 var setting = setting
-                setting.value = .multiselect(.init(values: categories, authToOpen: true))
+                setting.value = .multiselect(.init(values: categoriesAndGroups, authToOpen: true))
                 return setting
             }()
             SettingView(setting: newSetting)
         } else if setting.key == "Library.excludedUpdateCategories" {
             let newSetting = {
                 var setting = setting
-                setting.value = .multiselect(.init(values: categories))
+                setting.value = .multiselect(.init(values: categoriesOnly))
                 return setting
             }()
             SettingView(setting: newSetting)
@@ -507,6 +514,101 @@ private extension Setting {
                 return []
             default:
                 return checkCurrent()
+        }
+    }
+}
+
+private struct LayoutSettingView: View {
+    @State private var selection: Layout
+    @State private var showCustomSettings: Bool
+
+    init() {
+        let layout = UserDefaults.standard.string(forKey: "Appearance.layout").flatMap(Layout.init) ?? .standard
+        self._selection = State(initialValue: layout)
+        self._showCustomSettings = State(initialValue: layout == .custom)
+    }
+
+    enum Layout: String, CaseIterable {
+        case standard
+        case compact
+        case custom
+
+        var imageName: String {
+            switch self {
+                case .standard: UIDevice.current.userInterfaceIdiom == .pad ? "LayoutStandardPad" : "LayoutStandard"
+                case .compact: UIDevice.current.userInterfaceIdiom == .pad ? "LayoutCompactPad" : "LayoutCompact"
+                case .custom: UIDevice.current.userInterfaceIdiom == .pad ? "LayoutCustomPad" : "LayoutCustom"
+            }
+        }
+
+        var title: String {
+            switch self {
+                case .standard: NSLocalizedString("STANDARD")
+                case .compact: NSLocalizedString("COMPACT")
+                case .custom: NSLocalizedString("CUSTOM")
+            }
+        }
+    }
+
+    var body: some View {
+        Group {
+            HStack(spacing: 48) {
+                ForEach(Layout.allCases, id: \.self) { layout in
+                    let selected = layout == selection
+                    Button {
+                        selection = layout
+                        withAnimation {
+                            showCustomSettings = layout == .custom
+                        }
+                    } label: {
+                        VStack(spacing: 10) {
+                            Image(layout.imageName)
+                                .resizable()
+                                .renderingMode(.template)
+                                .foregroundStyle(Color(uiColor: selected ? .tintColor : .systemGray))
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 82)
+
+                            Text(layout.title)
+                                .foregroundStyle(Color(uiColor: .label))
+
+                            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                .imageScale(.large)
+                                .foregroundStyle(Color(uiColor: selected ? .tintColor : .secondarySystemFill))
+                                .transaction { t in
+                                    t.animation = nil // disable fade when switching on/off custom
+                                }
+                        }
+                    }
+                    .buttonStyle(NoButtonStyle())
+                    .transaction { t in
+                        t.animation = nil
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            if showCustomSettings {
+                SettingView(setting: .init(
+                    key: "Appearance.customPortraitRows",
+                    title: NSLocalizedString("PORTRAIT_ROWS"),
+                    value: .stepper(.init(minimumValue: 1, maximumValue: 15))
+                ))
+                SettingView(setting: .init(
+                    key: "Appearance.customLandscapeRows",
+                    title: NSLocalizedString("LANDSCAPE_ROWS"),
+                    value: .stepper(.init(minimumValue: 1, maximumValue: 15))
+                ))
+            }
+        }
+        .onChange(of: selection) { newValue in
+            UserDefaults.standard.set(newValue.rawValue, forKey: "Appearance.layout")
+        }
+    }
+
+    private struct NoButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
         }
     }
 }

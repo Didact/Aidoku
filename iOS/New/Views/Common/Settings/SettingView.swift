@@ -25,11 +25,13 @@ struct SettingView: View {
     @Environment(\.settingCustomContent) private var customContentHandler
 
     @Binding private var stringListBinding: [String]
+    @Binding private var stringBinding: String
     @Binding private var doubleBinding: Double
 
     @State private var requires: Bool
     @State private var requiresFalse: Bool
     @State private var toggleValue: Bool
+    @State private var textValue: String
 
     @State private var valueChangeTask: Task<Void, Never>?
     @State private var showLoginAlert = false
@@ -107,30 +109,36 @@ struct SettingView: View {
         _requiresObserver = StateObject(wrappedValue: UserDefaultsObserver(keys: keys))
 
         switch setting.value {
-            case .select:
-                let key = key(setting.key)
-                _stringListBinding = Binding(
-                    get: { [SettingsStore.shared.get(key: key)] },
-                    set: { SettingsStore.shared.set(key: key, value: $0.first!) }
-                )
+            case .select, .picker:
+                _stringListBinding = Binding.constant([])
+                _stringBinding = SettingsStore.shared.binding(key: key(setting.key))
                 _doubleBinding = Binding.constant(0)
             case .multiselect:
                 _stringListBinding = SettingsStore.shared.binding(key: key(setting.key))
+                _stringBinding = Binding.constant("")
                 _doubleBinding = Binding.constant(0)
             case .editableList:
                 _stringListBinding = SettingsStore.shared.binding(key: key(setting.key))
+                _stringBinding = Binding.constant("")
                 _doubleBinding = Binding.constant(0)
             case .stepper:
                 _stringListBinding = Binding.constant([])
+                _stringBinding = Binding.constant("")
                 _doubleBinding = SettingsStore.shared.binding(key: key(setting.key))
             default:
                 _stringListBinding = Binding.constant([])
+                _stringBinding = Binding.constant("")
                 _doubleBinding = Binding.constant(0)
         }
         if case .toggle = setting.value {
             _toggleValue = State(initialValue: SettingsStore.shared.get(key: key(setting.key)))
         } else {
             _toggleValue = State(initialValue: false)
+        }
+        if case .text = setting.value {
+            _textValue = State(initialValue: SettingsStore.shared.get(key: key(setting.key)))
+        } else {
+            _textValue = State(initialValue: "")
         }
     }
 
@@ -184,6 +192,8 @@ struct SettingView: View {
                 pageView(value: value)
             case let .editableList(value):
                 editableListView(value: value)
+            case let .picker(value):
+                pickerView(value: value)
             case .custom:
                 customView()
         }
@@ -221,13 +231,21 @@ struct SettingView: View {
             }
             refresh()
 
+            switch setting.value {
+                case .toggle: toggleValue = SettingsStore.shared.get(key: key(setting.key)) as Bool
+                case .text: textValue = SettingsStore.shared.get(key: key(setting.key)) as String
+                default: break
+            }
+
             let value: Any? = switch setting.value {
-                case .select: stringListBinding.first
+                case .select: stringBinding
                 case .multiselect: stringListBinding
                 case .toggle: toggleValue
                 case .stepper: doubleBinding
                 case .segment: SettingsStore.shared.get(key: key(setting.key)) as Int
+                case .text: textValue
                 case .editableList: stringListBinding
+                case .picker: stringBinding
                 default: nil
             }
             let notificationName = setting.notification ?? key(setting.key)
@@ -319,7 +337,7 @@ extension SettingView {
                     setting: setting,
                     value: value,
                     key: key(setting.key),
-                    stringListBinding: $stringListBinding
+                    stringBinding: $stringBinding
                 )
                 .environment(\.settingPageContent, pageContentHandler),
                 isActive: $pageIsActive
@@ -328,14 +346,13 @@ extension SettingView {
                     Text(setting.title)
                         .lineLimit(1)
                     Spacer()
-                    if let item = stringListBinding.first {
-                        let title = value.values
-                            .firstIndex { $0 == item }
-                            .flatMap { value.titles?[safe: $0] }
-                        Text(title ?? item)
-                            .foregroundStyle(Color.secondaryLabel)
-                            .lineLimit(1)
-                    }
+
+                    let title = value.values
+                        .firstIndex { $0 == stringBinding }
+                        .flatMap { value.titles?[safe: $0] }
+                    Text(title ?? stringBinding)
+                        .foregroundStyle(Color.secondaryLabel)
+                        .lineLimit(1)
                 }
             }
             .environment(\.isEnabled, true) // remove double disabled effect
@@ -356,7 +373,7 @@ extension SettingView {
         let value: SelectSetting
         let key: String
 
-        @Binding var stringListBinding: [String]
+        @Binding var stringBinding: String
 
         @Environment(\.settingPageContent) private var pageContentHandler
 
@@ -368,9 +385,9 @@ extension SettingView {
                     List {
                         ForEach(value.values.indices, id: \.self) { offset in
                             let item = value.values[offset]
-                            let selected = stringListBinding.contains(item)
+                            let selected = stringBinding == item
                             Button {
-                                stringListBinding = [item]
+                                stringBinding = item
                             } label: {
                                 HStack {
                                     Text(value.titles?[safe: offset] ?? item)
@@ -384,10 +401,8 @@ extension SettingView {
                             .foregroundStyle(.primary)
                         }
                     }
-                    .onChange(of: stringListBinding) { _ in
-                        if let item = stringListBinding.first {
-                            SettingsStore.shared.set(key: key, value: item)
-                        }
+                    .onChange(of: stringBinding) { newValue in
+                        SettingsStore.shared.set(key: key, value: newValue)
                     }
                 }
             }
@@ -624,14 +639,13 @@ extension SettingView {
                     .lineLimit(1)
                 Spacer()
             }
-            let text: Binding<String> = SettingsStore.shared.binding(key: key(setting.key))
 
             HStack(spacing: 4) {
                 Group {
                     if value.secure ?? false {
-                        SecureField(value.placeholder ?? "", text: text)
+                        SecureField(value.placeholder ?? "", text: $textValue)
                     } else {
-                        TextField(value.placeholder ?? "", text: text)
+                        TextField(value.placeholder ?? "", text: $textValue)
                     }
                 }
                 .focused($fieldFocused)
@@ -642,10 +656,16 @@ extension SettingView {
                 .keyboardType(value.keyboardType.flatMap { UIKeyboardType(rawValue: $0) } ?? .default)
                 .submitLabel(returnKeyType)
                 .disabled(disabled)
+                .onChange(of: fieldFocused) { isFocused in
+                    // update setting value on unfocus (keyboard dismiss or submit)
+                    if !isFocused {
+                        SettingsStore.shared.set(key: key(setting.key), value: textValue)
+                    }
+                }
 
-                if !text.wrappedValue.isEmpty && fieldFocused {
+                if !textValue.isEmpty && fieldFocused {
                     ClearFieldButton {
-                        text.wrappedValue = ""
+                        textValue = ""
                     }
                     .buttonStyle(.borderless)
                 }
@@ -1355,7 +1375,34 @@ extension SettingView {
     }
 }
 
-// MARK: Editable List View
+// MARK: Picker View
+extension SettingView {
+    @ViewBuilder
+    func pickerView(value: PickerSetting) -> some View {
+        Picker(selection: $stringBinding) {
+            ForEach(value.values.indices, id: \.self) { offset in
+                let item = value.values[offset]
+                Text(value.titles?[safe: offset] ?? item).tag(item)
+            }
+        } label: {
+            Text(setting.title)
+                .lineLimit(1)
+        }
+        .onChange(of: stringBinding) { newValue in
+            SettingsStore.shared.set(key: key(setting.key), value: newValue)
+        }
+        .disabled(disabled)
+        .opacity({
+            if #available(iOS 26.0, *) {
+                1 // ios 26 has the correct disabled style
+            } else {
+                disabled ? disabledOpacity : 1
+            }
+        }())
+    }
+}
+
+// MARK: Custom View
 extension SettingView {
     @ViewBuilder
     func customView() -> some View {

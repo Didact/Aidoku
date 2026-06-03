@@ -63,6 +63,7 @@ class ReaderPageViewController: BaseObservingViewController {
             zoomView?.zoomEnabled = !(isInDoublePageController)
         }
     }
+    var doublePageRestorationConstraints: [NSLayoutConstraint] = []
 
     /// Callback when image aspect ratio is updated
     var onAspectRatioUpdated: (() -> Void)?
@@ -111,6 +112,7 @@ class ReaderPageViewController: BaseObservingViewController {
                 zoomView.onZoomScaleChanged = { [weak self] scale in
                     self?.pageView?.setLiveTextHidden(scale != 1 || (self?.delegate?.barsHidden ?? false))
                 }
+                zoomView.doubleTapEnabled = !UserDefaults.standard.bool(forKey: "Reader.disableDoubleTap")
                 view.addSubview(reloadButton)
 
                 self.zoomView = zoomView
@@ -145,6 +147,9 @@ class ReaderPageViewController: BaseObservingViewController {
         addObserver(forName: "Reader.backgroundColor") { [weak self] _ in
             self?.loadPageBackground()
         }
+        addObserver(forName: "Reader.disableDoubleTap") { [weak self] notification in
+            self?.zoomView?.doubleTapEnabled = !(notification.object as? Bool ?? UserDefaults.standard.bool(forKey: "Reader.disableDoubleTap"))
+        }
 
         addObserver(forName: .orientationDidChange) { [weak self] _ in
             self?.loadPageBackground(forceReload: true)
@@ -156,7 +161,7 @@ class ReaderPageViewController: BaseObservingViewController {
         loadPageBackground() // fix page background resetting on system appearance change
     }
 
-    func setPage(_ page: Page, sourceId: String? = nil) {
+    func setPage(_ page: Page, sourceId: String? = nil, skipProcessing: Bool = false) {
         guard !pageSet, let pageView else { return }
         pageSet = true
         self.page = page
@@ -164,7 +169,7 @@ class ReaderPageViewController: BaseObservingViewController {
         reloadButton.isHidden = true
         zoomView?.zoomEnabled = false
         Task {
-            let result = await pageView.setPage(page, sourceId: sourceId)
+            let result = await pageView.setPage(page, sourceId: sourceId, skipProcessing: skipProcessing)
             zoomView?.zoomEnabled = result && !isInDoublePageController
             reloadButton.isHidden = result
 

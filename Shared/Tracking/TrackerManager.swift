@@ -22,13 +22,15 @@ actor TrackerManager {
     static let anilist = AniListTracker()
     /// An instance of the MyAnimeList tracker.
     static let myanimelist = MyAnimeListTracker()
+    /// An instance of the MangaBaka tracker.
+    static let mangabaka = MangaBakaTracker()
     /// An instance of the Shikimori tracker.
     static let shikimori = ShikimoriTracker()
     /// An instance of the Bangumi tracker.
     static let bangumi = BangumiTracker()
 
     /// An array of the available trackers.
-    static let trackers: [Tracker] = [komga, kavita, anilist, myanimelist, shikimori, bangumi]
+    static let trackers: [Tracker] = [komga, kavita, anilist, myanimelist, mangabaka, shikimori, bangumi]
 
     /// A boolean indicating if there is a tracker that is currently logged in.
     static var hasAvailableTrackers: Bool {
@@ -104,11 +106,22 @@ actor TrackerManager {
             // update last read chapter and volume based on mode
             if displayMode == .chapter {
                 // chapter mode: only update chapter, don't update volume
-                if let chapterNum, chapterNum > 0 && state.lastReadChapter ?? 0 < chapterNum {
-                    update.lastReadChapter = chapterNum
+                if let chapterNum, chapterNum > 0 {
+                    let newChapterNumber = Self.applyChapterOffset(
+                        to: chapterNum,
+                        offset: item.chapterOffset,
+                        maxChapters: state.totalChapters
+                    )
+                    if state.lastReadChapter ?? 0 < newChapterNumber {
+                        update.lastReadChapter = newChapterNumber
+                    }
                 } else if let volumeNum {
                     // no chapter metadata, use volume number as chapter
-                    let chapterFromVolume = Float(volumeNum)
+                    let chapterFromVolume = Self.applyChapterOffset(
+                        to: Float(volumeNum),
+                        offset: item.chapterOffset,
+                        maxChapters: state.totalChapters
+                    )
                     if chapterFromVolume > state.lastReadChapter ?? 0 {
                         update.lastReadChapter = chapterFromVolume
                     }
@@ -126,8 +139,15 @@ actor TrackerManager {
                 }
             } else {
                 // default mode: update both chapter and volume if available
-                if let chapterNum, chapterNum > 0 && state.lastReadChapter ?? 0 < chapterNum {
-                    update.lastReadChapter = chapterNum
+                if let chapterNum, chapterNum > 0 {
+                    let newChapterNumber = Self.applyChapterOffset(
+                        to: chapterNum,
+                        offset: item.chapterOffset,
+                        maxChapters: state.totalChapters
+                    )
+                    if state.lastReadChapter ?? 0 < newChapterNumber {
+                        update.lastReadChapter = newChapterNumber
+                    }
                 }
                 if let volumeNum, volumeNum > 0 && state.lastReadVolume ?? 0 < volumeNum {
                     update.lastReadVolume = volumeNum
@@ -223,21 +243,21 @@ actor TrackerManager {
                 highestChapterRead: highestReadNumber,
                 earliestReadDate: earliestReadDate
             )
-            await TrackerManager.shared.saveTrackItem(item: TrackItem(
+            let trackItem = TrackItem(
                 id: id ?? item.id,
                 trackerId: tracker.id,
                 sourceId: manga.sourceKey,
                 mangaId: manga.key,
-                title: item.title ?? manga.title
-            ))
+                title: item.title ?? manga.title,
+                chapterOffset: 0
+            )
+            await TrackerManager.shared.saveTrackItem(item: trackItem)
 
             // Sync progress from tracker if enabled or is enhanced tracker
             if UserDefaults.standard.bool(forKey: "Tracking.autoSyncFromTracker") || (tracker is EnhancedTracker) || (tracker is PageTracker) {
-                if tracker is PageTracker {
-                    await syncPageTrackerHistory(manga: manga)
-                } else {
-                    await syncProgressFromTracker(tracker: tracker, trackId: id ?? item.id, manga: manga)
-                }
+                await syncProgressFromTracker(tracker: tracker, trackItem: trackItem, manga: manga)
+            } else {
+                NotificationCenter.default.post(name: .syncTrackItem, object: trackItem)
             }
         } catch {
             LogManager.logger.error("Failed to register tracker \(tracker.id): \(error)")
@@ -253,6 +273,7 @@ actor TrackerManager {
                 sourceId: item.sourceId,
                 mangaId: item.mangaId,
                 title: item.title,
+                chapterOffset: item.chapterOffset,
                 context: context
             )
             do {
@@ -270,6 +291,25 @@ actor TrackerManager {
         await CoreDataManager.shared.container.performBackgroundTask { @Sendable context in
             self.removeTrackItem(item: item, context: context)
         }
+    }
+
+    /// Sets the chapter offset for a track item.
+    func setTrackChapterOffset(item: TrackItem, chapterOffset: Int) async {
+        await CoreDataManager.shared.container.performBackgroundTask { context in
+            CoreDataManager.shared.setTrackChapterOffset(
+                trackerId: item.trackerId,
+                sourceId: item.sourceId,
+                mangaId: item.mangaId,
+                chapterOffset: chapterOffset,
+                context: context
+            )
+            do {
+                try context.save()
+            } catch {
+                LogManager.logger.error("TrackManager.setTrackChapterOffset(item:chapterOffset:): \(error)")
+            }
+        }
+        NotificationCenter.default.post(name: .updateTrackers, object: nil)
     }
 
     nonisolated func removeTrackItem(item: TrackItem, context: NSManagedObjectContext) {
@@ -296,8 +336,8 @@ actor TrackerManager {
     /// Checks if there is a tracker that can be added to the given manga.
     func hasAvailableTrackers(sourceKey: String, mangaKey: String) async -> Bool {
         for tracker in Self.trackers {
-            let canRegister = try? await tracker.canRegister(sourceKey: sourceKey, mangaKey: mangaKey)
-            if canRegister == true {
+            let canRegister = tracker.canRegister(sourceKey: sourceKey, mangaKey: mangaKey)
+            if canRegister {
                 return true
             }
         }
@@ -307,7 +347,7 @@ actor TrackerManager {
     /// Sync progress from tracker to local history.
     func syncProgressFromTracker(
         tracker: Tracker,
-        trackId: String,
+        trackItem: TrackItem,
         manga: AidokuRunner.Manga,
         chapters: [AidokuRunner.Chapter]? = nil
     ) async {
@@ -320,7 +360,7 @@ actor TrackerManager {
         } else {
             let chaptersToMark = await getChaptersToSyncProgressFromTracker(
                 tracker: tracker,
-                trackId: trackId,
+                trackItem: trackItem,
                 manga: manga,
                 chapters: chapters
             )
@@ -488,7 +528,7 @@ actor TrackerManager {
     /// Add all applicable enhanced trackers to a given manga.
     func bindEnhancedTrackers(manga: AidokuRunner.Manga) async {
         for tracker in Self.trackers where tracker is EnhancedTracker {
-            if (try? await tracker.canRegister(sourceKey: manga.sourceKey, mangaKey: manga.key)) == true {
+            if tracker.canRegister(sourceKey: manga.sourceKey, mangaKey: manga.key) {
                 do {
                     let items = try await tracker.search(for: manga, includeNsfw: true)
                     guard let item = items.first else {
@@ -501,6 +541,17 @@ actor TrackerManager {
                 }
             }
         }
+    }
+}
+
+extension TrackerManager {
+    static func applyChapterOffset(to chapter: Float, offset: Int, maxChapters: Int?) -> Float {
+        var adjusted = chapter + Float(offset)
+        adjusted = max(0, adjusted)
+        if let maxChapters {
+            adjusted = min(adjusted, Float(maxChapters))
+        }
+        return adjusted
     }
 }
 
@@ -531,13 +582,13 @@ extension TrackerManager {
 
     func getChaptersToSyncProgressFromTracker(
         tracker: Tracker,
-        trackId: String,
+        trackItem: TrackItem,
         manga: AidokuRunner.Manga,
         chapters: [AidokuRunner.Chapter]? = nil,
         currentHighestRead: Float? = nil
     ) async -> [AidokuRunner.Chapter] {
         guard
-            let state = try? await tracker.getState(trackId: trackId),
+            let state = try? await tracker.getState(trackId: trackItem.id),
             case let trackerLastReadChapter = state.lastReadChapter,
             case let trackerLastReadVolume = state.lastReadVolume,
             (trackerLastReadChapter ?? 0) > 0 || (trackerLastReadVolume ?? 0) > 0
@@ -573,8 +624,15 @@ extension TrackerManager {
         // Determine what to sync based on tracker progress and forced mode
         if displayMode == .chapter {
             // Forced chapter mode: sync chapter progress
-            if let trackerLastReadChapter, trackerLastReadChapter > currentHighestRead {
-                chaptersToMark = chapters.filter { ($0.chapterNumber ?? $0.volumeNumber ?? 0) <= trackerLastReadChapter }
+            if let trackerLastReadChapter {
+                let offsetTrackerLastReadChapter = Self.applyChapterOffset(
+                    to: trackerLastReadChapter,
+                    offset: -trackItem.chapterOffset,
+                    maxChapters: state.totalChapters
+                )
+                if offsetTrackerLastReadChapter > currentHighestRead {
+                    chaptersToMark = chapters.filter { ($0.chapterNumber ?? $0.volumeNumber ?? 0) <= offsetTrackerLastReadChapter }
+                }
             }
         } else if displayMode == .volume {
             // Forced volume mode: sync volume progress
@@ -584,17 +642,24 @@ extension TrackerManager {
         } else {
             // Default mode: sync both chapter and volume progress
             var checkedForChapters = false
-            if let trackerLastReadChapter, trackerLastReadChapter > currentHighestRead {
-                // find all chapters with a chapter number less than or equal to the last tracker chapter
-                chaptersToMark = chapters.filter {
-                    // floor the chapter number so partial chapters are marked (e.g. 10.1 and 10.2 will be marked if the tracker is at 10)
-                    if let chapter = $0.chapterNumber, floor(chapter) <= trackerLastReadChapter {
-                        true
-                    } else {
-                        false
+            if let trackerLastReadChapter {
+                let offsetTrackerLastReadChapter = Self.applyChapterOffset(
+                    to: trackerLastReadChapter,
+                    offset: -trackItem.chapterOffset,
+                    maxChapters: state.totalChapters
+                )
+                if offsetTrackerLastReadChapter > currentHighestRead {
+                    // find all chapters with a chapter number less than or equal to the last tracker chapter
+                    chaptersToMark = chapters.filter {
+                        // floor the chapter number so partial chapters are marked (e.g. 10.1 and 10.2 will be marked if the tracker is at 10)
+                        if let chapter = $0.chapterNumber, floor(chapter) <= offsetTrackerLastReadChapter {
+                            true
+                        } else {
+                            false
+                        }
                     }
+                    checkedForChapters = true
                 }
-                checkedForChapters = true
             }
             // otherwise, if we didn't find any chapters, try using the volume number instead
             // note: ignores the case where we skipped checking chapters due to currentHighestRead <= trackerLastReadChapter (#753)

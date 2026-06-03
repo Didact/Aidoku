@@ -125,7 +125,6 @@
 "INCOGNITO_MODE" = "Incognito modus";
 "APPEARANCE" = "Uiterlijk";
 "USE_SYSTEM_APPEARANCE" = "Gebruik systeem weergave";
-"MANGA_PER_ROW" = "Manga per rij";
 "PORTRAIT" = "Portret";
 "LANDSCAPE" = "Landschap";
 "UNREAD_CHAPTER_BADGES" = "Ongelezen hoofdstuk badge";
@@ -210,12 +209,9 @@
 "RENAME_CATEGORY_FAIL_INFO" = "Categorie namen moeten uniek zijn.";
 "CATEGORY_NAME" = "Categorie naam";
 "MIGRATE_SOURCES" = "Migreer Bronnen";
-"START_MATCHING" = "Begin met matchen";
 "SYNC_LOCAL_HISTORY" = "Synchroniseer lokale geschiedenis";
 "MIGRATE" = "Migreer";
-"MIGRATION" = "Migratie";
 "OPTIONS" = "Opties";
-"TITLES" = "Titels";
 "DESTINATION" = "Bestemming";
 "SELECTED" = "Geselecteerd";
 "AVAILABLE" = "Beschikbaar";

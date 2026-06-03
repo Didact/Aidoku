@@ -116,7 +116,6 @@
 "APPEARANCE_LIGHT" = "Lyst";
 "APPEARANCE_DARK" = "Mørk";
 "USE_SYSTEM_APPEARANCE" = "Bruk systemutseende";
-"MANGA_PER_ROW" = "Manga per rad";
 "PORTRAIT" = "Stående";
 "LANDSCAPE" = "Liggende";
 "READER" = "Leser";
@@ -166,7 +165,6 @@
 "BACKUP_IMPORT_SUCCESS" = "Sikkerhetskopi importert";
 "LIBRARY_LOCKED" = "Biblioteket er låst.";
 "TITLE" = "Navn";
-"MIGRATION" = "Flytting";
 "MIGRATE" = "Flytt";
 "OPTIONS" = "Alternativer";
 "DESTINATION" = "Mål";

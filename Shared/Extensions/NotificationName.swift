@@ -27,6 +27,7 @@ extension Notification.Name {
     static let addToLibrary = Self("addToLibrary")
     static let removeFromLibrary = Self("removeFromLibrary")
     static let migratedManga = Self("migratedManga")
+    static let openedManga = Self("openedManga")
     static let updateMangaDetails = Self("updateMangaDetails")
     static let updateCategories = Self("updateCategories")
     static let updateManga = Self("updateManga")
@@ -67,7 +68,8 @@ extension Notification.Name {
     static let readerOrientation = Self("Reader.orientation")
 
     // settings
-    static let portraitRowsSetting = Self("General.portraitRows")
-    static let landscapeRowsSetting = Self("General.landscapeRows")
+    static let layoutSetting = Self("Appearance.layout")
+    static let portraitRowsSetting = Self("Appearance.customPortraitRows")
+    static let landscapeRowsSetting = Self("Appearance.customLandscapeRows")
     static let historyLockTabSetting = Self("History.lockHistoryTab")
 }

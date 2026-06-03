@@ -184,6 +184,7 @@ class MangaGridCell: UICollectionViewCell {
         imageView.image = UIImage(named: "MangaPlaceholder")
         imageTask?.cancel()
         imageTask = nil
+        highlightView.alpha = 0
     }
 }
 
@@ -252,7 +253,7 @@ extension MangaGridCell {
                 urlRequest = URLRequest(url: fileUrl)
             } else if let sourceId {
                 // ensure sources are loaded so we can get the modified image request
-                await SourceManager.shared.loadSources()
+                await SourceManager.shared.waitForSourcesLoad()
                 if let source = SourceManager.shared.source(for: sourceId) {
                     urlRequest = await source.getModifiedImageRequest(url: url, context: nil)
                 }

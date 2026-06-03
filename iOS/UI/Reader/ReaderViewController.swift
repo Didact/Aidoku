@@ -31,16 +31,17 @@ class ReaderViewController: BaseObservingViewController {
         didSet {
             // ensure chapters queued for deletion are persistent, in case of app termination
             if chaptersToRemoveDownload.isEmpty {
-                UserDefaults.standard.removeObject(forKey: "chaptersToBeDeleted")
+                UserDefaults.standard.removeObject(forKey: "Data.chaptersToBeDeleted")
             } else {
                 let data = try? JSONEncoder().encode(chaptersToRemoveDownload.map {
                     ChapterIdentifier(sourceKey: manga.sourceKey, mangaKey: manga.key, chapterKey: $0.key)
                 })
-                UserDefaults.standard.set(data, forKey: "chaptersToBeDeleted")
+                UserDefaults.standard.set(data, forKey: "Data.chaptersToBeDeleted")
             }
         }
     }
     private var currentPage = 1
+    private var currentPosition: Double?
     private var sessionReadPages: Set<Int> = []
     private var sessionStartDate: Date?
     private var sessionLastInteraction: Date?
@@ -50,6 +51,12 @@ class ReaderViewController: BaseObservingViewController {
     private lazy var activityIndicator = UIActivityIndicatorView(style: .medium)
     private lazy var toolbarView = ReaderToolbarView()
     private var toolbarViewWidthConstraint: NSLayoutConstraint?
+
+    private var squeezeTimer: Timer?
+    private var longSqueezeTimer: Timer?
+    private var squeezeStartTime: Date?
+    private let doubleSqueezeInterval: TimeInterval = 0.3
+    private let longSqueezeThreshold: TimeInterval = 0.5
 
     private lazy var descriptionButtonController: UIHostingController<ReaderPageDescriptionButtonView> = {
         let buttonView = ReaderPageDescriptionButtonView(source: source, pages: [])
@@ -71,16 +78,17 @@ class ReaderViewController: BaseObservingViewController {
             }()
         )
 
+    // fake zoom gesture so that the bar toggle gesture doesn't conflict with zooming
+    private lazy var fakeZoomTapGesture: UITapGestureRecognizer = {
+        let doubleTap = UITapGestureRecognizer(target: self, action: nil)
+        doubleTap.numberOfTapsRequired = 2
+        return doubleTap
+    }()
+
     private lazy var barToggleTapGesture: UITapGestureRecognizer = {
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tap.numberOfTapsRequired = 1
-
-        let doubleTap = UITapGestureRecognizer(target: self, action: nil)
-        doubleTap.numberOfTapsRequired = 2
-        view.addGestureRecognizer(doubleTap)
-
-        tap.require(toFail: doubleTap)
-
+        tap.require(toFail: fakeZoomTapGesture)
         return tap
     }()
 
@@ -197,12 +205,26 @@ class ReaderViewController: BaseObservingViewController {
         view.addSubview(activityIndicator)
 
         // bar toggle tap gesture
+        fakeZoomTapGesture.isEnabled = !UserDefaults.standard.bool(forKey: "Reader.disableDoubleTap")
+        view.addGestureRecognizer(fakeZoomTapGesture)
         view.addGestureRecognizer(barToggleTapGesture)
 
+        // page offset tap gesture
+        let pageOffsetGesture = UITapGestureRecognizer(target: self, action: #selector(toggleOffset))
+        pageOffsetGesture.numberOfTouchesRequired = 2
+        pageOffsetGesture.numberOfTapsRequired = 2
+        view.addGestureRecognizer(pageOffsetGesture)
+
         // set reader
-        let readingModeKey = "Reader.readingMode.\(manga.key)"
+        let readingModeKey = "Reader.readingMode.\(manga.identifier)"
         UserDefaults.standard.register(defaults: [readingModeKey: "default"])
         setReadingMode(UserDefaults.standard.string(forKey: readingModeKey))
+
+        // set up apple pencil squeeze handler
+        if #available(iOS 17.5, *) {
+            let pencilInteraction = UIPencilInteraction(delegate: self)
+            view.addInteraction(pencilInteraction)
+        }
 
         // load current tap zone
         updateTapZone()
@@ -224,12 +246,15 @@ class ReaderViewController: BaseObservingViewController {
     }
 
     override func observe() {
-        addObserver(forName: "Reader.readingMode.\(manga.key)") { [weak self] _ in
+        addObserver(forName: "Reader.readingMode.\(manga.identifier)") { [weak self] _ in
             guard let self else { return }
-            self.setReadingMode(UserDefaults.standard.string(forKey: "Reader.readingMode.\(self.manga.key)"))
+            self.setReadingMode(UserDefaults.standard.string(forKey: "Reader.readingMode.\(self.manga.identifier)"))
             self.reader?.setChapter(self.chapter, startPage: self.currentPage)
             // if the tap zone is auto, it will changed based on the current reader
             self.updateTapZone()
+        }
+        addObserver(forName: "Reader.disableDoubleTap") { [weak self] notification in
+            self?.fakeZoomTapGesture.isEnabled = !(notification.object as? Bool ?? UserDefaults.standard.bool(forKey: "Reader.disableDoubleTap"))
         }
         let reloadBlock: (Notification) -> Void = { [weak self] _ in
             guard let self else { return }
@@ -241,6 +266,22 @@ class ReaderViewController: BaseObservingViewController {
         addObserver(forName: "Reader.cropBorders", using: reloadBlock)
         addObserver(forName: "Reader.liveText", using: reloadBlock)
         addObserver(forName: "Reader.tapZones", using: reloadBlock)
+        // Switch text reader style (paged <-> scroll) without restart
+        addObserver(forName: "Reader.textReaderStyle") { [weak self] _ in
+            guard let self else { return }
+            // Only switch if we're currently in a text reader
+            if self.reader is ReaderTextViewController || self.reader is ReaderPagedTextViewController {
+                // Save current position before switching so the new reader can restore it
+                Task {
+                    await self.updateReadPosition()
+                    await MainActor.run {
+                        self.setReader(.text)
+                        self.reader?.setChapter(self.chapter, startPage: self.currentPage)
+                        self.updateTapZone()
+                    }
+                }
+            }
+        }
         addObserver(forName: UIScene.willDeactivateNotification) { [weak self] _ in
             guard let self else { return }
             Task {
@@ -345,14 +386,17 @@ class ReaderViewController: BaseObservingViewController {
         totalPages: Int? = nil,
         chapter: AidokuRunner.Chapter? = nil
     ) async {
+        let effectiveTotalPages = totalPages ?? toolbarView.totalPages ?? 0
+        let effectiveCurrentPage = currentPage ?? self.currentPage
+
         guard
             !UserDefaults.standard.bool(forKey: "General.incognitoMode"),
-            (totalPages ?? toolbarView.totalPages ?? 0) > 0 // ensure chapter pages are loaded
+            effectiveTotalPages > 0 // ensure chapter pages are loaded
         else {
             return
         }
 
-        let currentPage = currentPage ?? self.currentPage
+        let currentPage = effectiveCurrentPage
         let chapter = chapter ?? self.chapter
 
         let sourceId = manga.sourceKey
@@ -377,6 +421,7 @@ class ReaderViewController: BaseObservingViewController {
             chapter: chapter.toOld(sourceId: sourceId, mangaId: mangaId),
             progress: currentPage,
             totalPages: totalPages,
+            scrollPosition: currentPosition,
             completed: completed
         )
         await saveReadingSession(chapter: chapter)
@@ -455,8 +500,19 @@ class ReaderViewController: BaseObservingViewController {
     }
 
     @objc func openReaderSettings() {
+        let currentReader: Reader
+        switch reader {
+            case is ReaderTextViewController, is ReaderPagedTextViewController:
+                currentReader = .text
+            case is ReaderPagedViewController:
+                currentReader = .paged
+            case is ReaderWebtoonViewController:
+                currentReader = .scroll
+            default:
+                currentReader = .paged
+        }
         let vc = UIHostingController(
-            rootView: ReaderSettingsView(mangaId: manga.key)
+            rootView: ReaderSettingsView(mangaId: manga.identifier, reader: currentReader)
         )
         present(vc, animated: true)
     }
@@ -567,11 +623,25 @@ extension ReaderViewController {
                     pageController = nil
                 }
             case .text:
+                // Text always reads left-to-right, regardless of manga setting
                 toolbarView.sliderView.direction = .forward
-                if !(reader is ReaderTextViewController) {
-                    pageController = ReaderTextViewController(source: source, manga: manga)
+
+                // Check user preference for text reader style
+                let textReaderStyle = UserDefaults.standard.string(forKey: "Reader.textReaderStyle") ?? "paged"
+                if textReaderStyle == "paged" {
+                    // Kindle-like paginated experience
+                    if !(reader is ReaderPagedTextViewController) {
+                        pageController = ReaderPagedTextViewController(source: source, manga: manga)
+                    } else {
+                        pageController = nil
+                    }
                 } else {
-                    pageController = nil
+                    // Original scroll-based text reader
+                    if !(reader is ReaderTextViewController) {
+                        pageController = ReaderTextViewController(source: source, manga: manga)
+                    } else {
+                        pageController = nil
+                    }
                 }
         }
         if let pageController {
@@ -588,6 +658,38 @@ extension ReaderViewController {
 // MARK: - Reader Holding Delegate
 extension ReaderViewController: ReaderHoldingDelegate {
     var barsHidden: Bool { statusBarHidden }
+
+    private func areDuplicates(_ a: AidokuRunner.Chapter, _ b: AidokuRunner.Chapter) -> Bool {
+        a.chapterNumber == b.chapterNumber
+            && a.volumeNumber == b.volumeNumber
+            && (!(a.chapterNumber == nil && a.volumeNumber == nil) || a.title == b.title)
+    }
+
+    private func isValidScanlatorMatch(for next: AidokuRunner.Chapter, current: Set<String>) -> Bool {
+        let nextScanlators = Set(next.scanlators ?? [])
+        return current.isEmpty ? nextScanlators.isEmpty : !current.isDisjoint(with: nextScanlators)
+    }
+
+    private func findBestChapterMatch(from index: Int, step: Int) -> AidokuRunner.Chapter {
+        let firstCandidate = chapterList[index]
+        let currentScanlators = Set(chapter.scanlators ?? [])
+
+        var i = index
+        while i >= 0 && i < chapterList.count {
+            let next = chapterList[i]
+            guard areDuplicates(next, firstCandidate) else { break }
+
+            let identifier = ChapterIdentifier(sourceKey: manga.sourceKey, mangaKey: manga.key, chapterKey: next.key)
+            let isReadable = !next.locked || DownloadManager.shared.getDownloadStatus(for: identifier) == .finished
+
+            if isReadable && isValidScanlatorMatch(for: next, current: currentScanlators) {
+                return next
+            }
+            i += step
+        }
+
+        return firstCandidate
+    }
 
     func getNextChapter() -> AidokuRunner.Chapter? {
         guard
@@ -610,10 +712,7 @@ extension ReaderViewController: ReaderHoldingDelegate {
                 || DownloadManager.shared.getDownloadStatus(for: identifier) == .finished
 
             if readable {
-                let isDuplicate =
-                    new.chapterNumber == chapter.chapterNumber
-                    && new.volumeNumber == chapter.volumeNumber
-                    && (!(new.chapterNumber == nil && new.volumeNumber == nil) || new.title == chapter.title)
+                let isDuplicate = areDuplicates(new, chapter)
 
                 if nextChapterInList == nil {
                     nextChapterInList = new
@@ -622,7 +721,7 @@ extension ReaderViewController: ReaderHoldingDelegate {
                     chaptersToMark.append(new)
                 }
                 if !isDuplicate {
-                    return skipDuplicates ? new : nextChapterInList
+                    return skipDuplicates ? findBestChapterMatch(from: index, step: -1) : nextChapterInList
                 } else if !skipDuplicates && !markDuplicates {
                     return new
                 }
@@ -650,12 +749,9 @@ extension ReaderViewController: ReaderHoldingDelegate {
                 || DownloadManager.shared.getDownloadStatus(for: identifier) == .finished
 
             if readable {
-                let isDuplicate =
-                    new.chapterNumber == chapter.chapterNumber
-                    && new.volumeNumber == chapter.volumeNumber
-                    && (!(new.chapterNumber == nil && new.volumeNumber == nil) || new.title == chapter.title)
+                let isDuplicate = areDuplicates(new, chapter)
                 if !isDuplicate {
-                    return new
+                    return findBestChapterMatch(from: index, step: 1)
                 }
                 if markDuplicates {
                     chaptersToMark.append(new)
@@ -685,11 +781,15 @@ extension ReaderViewController: ReaderHoldingDelegate {
         loadNavbarTitle()
     }
 
-    func setCurrentPage(_ page: Int) {
-        setCurrentPages(page...page)
+    func setCurrentPage(_ page: Int, position: Double? = nil) {
+        setCurrentPages(page...page, position: position)
     }
 
     func setCurrentPages(_ pages: ClosedRange<Int>) {
+        setCurrentPages(pages, position: nil)
+    }
+
+    private func setCurrentPages(_ pages: ClosedRange<Int>, position: Double? = nil) {
         guard let totalPages = toolbarView.totalPages else { return }
 
         updateDescriptionButton(pages: pages)
@@ -702,9 +802,17 @@ extension ReaderViewController: ReaderHoldingDelegate {
 
         let page = max(1, min(pages.lowerBound, totalPages))
         currentPage = page
+        currentPosition = position
         toolbarView.currentPage = page
         toolbarView.updateSliderPosition()
-        if pages.upperBound >= totalPages {
+        // Mark as completed when reaching the last page
+        // Exception: Don't mark for the pre-pagination placeholder (single text page before
+        // ReaderPagedTextViewController has paginated it). Once paginated, even single-page
+        // chapters should be marked as read.
+        let isPrePaginationPlaceholder = totalPages == 1
+            && self.pages.first?.isTextPage == true
+            && !(reader is ReaderPagedTextViewController && (reader as? ReaderPagedTextViewController)?.hasPaginated == true)
+        if pages.upperBound >= totalPages && !isPrePaginationPlaceholder {
             setCompleted()
         }
     }
@@ -730,6 +838,15 @@ extension ReaderViewController: ReaderHoldingDelegate {
     }
 
     func setPages(_ pages: [Page]) {
+
+        // If already in a text reader with text pages, just update toolbar - don't trigger any switches
+        if (reader is ReaderPagedTextViewController || reader is ReaderTextViewController)
+            && pages.allSatisfy({ $0.isTextPage }) && pages.count > 1 {
+            self.pages = pages
+            toolbarView.totalPages = pages.count
+            activityIndicator.stopAnimating()
+            return
+        }
         self.pages = pages
         toolbarView.totalPages = pages.count
         activityIndicator.stopAnimating()
@@ -738,14 +855,19 @@ extension ReaderViewController: ReaderHoldingDelegate {
             showLoadFailAlert()
         } else if pages.count == 1 && pages[0].isTextPage {
             // single text page, should switch to text reader
-            if !(reader is ReaderTextViewController) {
+            if !(reader is ReaderPagedTextViewController) && !(reader is ReaderTextViewController) {
                 setReader(.text)
                 setChapter(chapter)
                 loadCurrentChapter()
+            } else {
             }
+        } else if reader is ReaderPagedTextViewController && pages.allSatisfy({ $0.isTextPage }) {
+            // Already in paginated text reader with multiple text pages (from pagination)
+            // Don't switch away - this is our internal page count update
+            // Just update the toolbar, don't reload
         } else {
             // otherwise, make sure we're not in the text reader
-            if reader is ReaderTextViewController {
+            if reader is ReaderTextViewController || reader is ReaderPagedTextViewController {
                 switch readingMode {
                     case .ltr, .rtl, .vertical:
                         setReader(.paged)
@@ -791,6 +913,7 @@ extension ReaderViewController {
                 case is ReaderPagedViewController: .leftRight
                 case is ReaderWebtoonViewController: .lShaped
                 case is ReaderTextViewController: .lShaped
+                case is ReaderPagedTextViewController: .leftRight  // Kindle-style tap zones
                 default: .leftRight
             }
             case "left-right": .leftRight
@@ -837,6 +960,77 @@ extension ReaderViewController {
             }
         } else {
             toggleBarVisibility()
+        }
+    }
+}
+
+// MARK: - Apple Pencil Squeeze
+extension ReaderViewController: UIPencilInteractionDelegate {
+    @available(iOS 17.5, *)
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        // if pencil squeezing is disabled globally, ignore interaction (hig)
+        guard UIPencilInteraction.preferredSqueezeAction != .ignore else { return }
+
+        switch squeeze.phase {
+            case .began:
+                squeezeStartTime = Date()
+                longSqueezeTimer = Timer.scheduledTimer(
+                    withTimeInterval: longSqueezeThreshold,
+                    repeats: false
+                ) { [weak self] _ in
+                    Task { @MainActor in
+                        self?.longSqueezeTimer = nil
+                        self?.openChapterList()
+                    }
+                }
+            case .ended:
+                guard let startTime = squeezeStartTime else { return }
+                let duration = Date().timeIntervalSince(startTime)
+                squeezeStartTime = nil
+                longSqueezeTimer?.invalidate()
+                longSqueezeTimer = nil
+
+                if duration >= longSqueezeThreshold {
+                    // long squeeze: chapter selector
+                    squeezeTimer?.invalidate()
+                    squeezeTimer = nil
+                    return
+                } else {
+                    if let timer = squeezeTimer {
+                        // double squeeze: previous page
+                        timer.invalidate()
+                        squeezeTimer = nil
+                        previousPage()
+                    } else {
+                        // single squeeze: next page
+                        squeezeTimer = Timer.scheduledTimer(
+                            withTimeInterval: doubleSqueezeInterval,
+                            repeats: false
+                        ) { [weak self] _ in
+                            Task { @MainActor in
+                                self?.squeezeTimer = nil
+                                self?.nextPage()
+                            }
+                        }
+                    }
+                }
+            default:
+                break
+        }
+
+    }
+
+    private func nextPage() {
+        switch readingMode {
+            case .rtl: reader?.moveLeft()
+            default: reader?.moveRight()
+        }
+    }
+
+    private func previousPage() {
+        switch readingMode {
+            case .rtl: reader?.moveRight()
+            default: reader?.moveLeft()
         }
     }
 }
@@ -964,6 +1158,11 @@ extension ReaderViewController {
                 input: UIKeyCommand.inputRightArrow
             ),
             UIKeyCommand(
+                title: NSLocalizedString("TOGGLE_PAGE_OFFSET"),
+                action: #selector(toggleOffset),
+                input: "o"
+            ),
+            UIKeyCommand(
                 title: NSLocalizedString("CHAPTER_FORWARD"),
                 action: #selector(nextChapter),
                 input: ","
@@ -999,6 +1198,10 @@ extension ReaderViewController {
 
     @objc func moveRight() {
         reader?.moveRight()
+    }
+
+    @objc func toggleOffset() {
+        reader?.toggleOffset()
     }
 
     @objc func nextChapter() {

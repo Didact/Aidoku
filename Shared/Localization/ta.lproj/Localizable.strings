@@ -105,7 +105,6 @@
 "APPEARANCE_LIGHT" = "ஒளி";
 "APPEARANCE_DARK" = "இருண்ட";
 "USE_SYSTEM_APPEARANCE" = "கணினி தோற்றத்தைப் பயன்படுத்தவும்";
-"MANGA_PER_ROW" = "வரிசைக்கு மங்கா";
 "PORTRAIT" = "உருவப்படம்";
 "LANDSCAPE" = "நிலப்பரப்பு";
 "READER" = "வாசகர்";
@@ -208,11 +207,8 @@
 "SKIP_DUPLICATE_CHAPTERS" = "நகல் அத்தியாயங்களைத் தவிர்க்கவும்";
 "RENAME_CATEGORY" = "வகை மறுபெயரிடுதல்";
 "MIGRATE_SOURCES" = "ஆதாரங்கள்";
-"START_MATCHING" = "பொருத்தத் தொடங்குங்கள்";
 "SYNC_LOCAL_HISTORY" = "உள்ளக வரலாற்றை ஒத்திசைக்கவும்";
-"MIGRATION" = "குடிபெயர்வு";
 "OPTIONS" = "விருப்பங்கள்";
-"TITLES" = "தலைப்புகள்";
 "DESTINATION" = "இலக்கு";
 "AVAILABLE" = "கிடைக்கிறது";
 "NOT_FOUND" = "கண்டுபிடிக்கப்படவில்லை";
@@ -594,7 +590,6 @@
 "READING_SESSIONS" = "வாசிப்பு அமர்வுகள்";
 "CLEAR_SOURCE_CACHE" = "ஆதார தற்காலிக சேமிப்பை அழிக்கவும்";
 "CLEAR_SOURCE_CACHE_TEXT" = "மூல url(கள்)க்கான தற்காலிகச் சேமிப்பு பிணையம் தரவு அழிக்கப்படும். இது தற்காலிகமாக ஏற்றுதல் நேரங்களை அதிகரிக்கலாம்.";
-"ISOLATE_FIRST_PAGE" = "முதல் பக்கத்தை எப்போதும் தனிமைப்படுத்தவும்";
 "SPLIT_WIDE_IMAGES" = "பரந்த படங்களைப் பிரிக்கவும்";
 "REVERSE_SPLIT_ORDER" = "தலைகீழ் பிளவு வரிசை";
 "TRACKING" = "கண்காணிப்பு";

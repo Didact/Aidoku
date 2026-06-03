@@ -158,7 +158,7 @@ extension MangaCollectionViewController {
     func updateDataSource() {
         var snapshot = NSDiffableDataSourceSnapshot<Section, AidokuRunner.Manga>()
         snapshot.appendSections([.regular])
-        snapshot.appendItems(entries, toSection: .regular)
+        snapshot.appendItems(entries.unique(), toSection: .regular)
         dataSource.apply(snapshot)
     }
 
@@ -248,36 +248,61 @@ extension MangaCollectionViewController {
                     image: UIImage(systemName: "trash"),
                     attributes: .destructive
                 ) { _ in
-                    // remove bookmark icon
-                    self.bookmarkedItems.remove(entry.key)
-                    var snapshot = self.dataSource.snapshot()
-                    snapshot.reloadItems([entry])
-                    self.dataSource.apply(snapshot)
-                    // remove from library
-                    Task {
-                        await MangaManager.shared.removeFromLibrary(
-                            sourceId: entry.sourceKey,
-                            mangaId: entry.key
+                    let isTracking = TrackerManager.shared.isTracking(
+                        sourceId: entry.sourceKey,
+                        mangaId: entry.key
+                    )
+                    func commit() {
+                        // remove bookmark icon
+                        self.bookmarkedItems.remove(entry.key)
+                        var snapshot = self.dataSource.snapshot()
+                        snapshot.reloadItems([entry])
+                        self.dataSource.apply(snapshot)
+                        // remove from library
+                        Task {
+                            await MangaManager.shared.removeFromLibrary(
+                                sourceId: entry.sourceKey,
+                                mangaId: entry.key
+                            )
+                        }
+                    }
+                    if isTracking {
+                        self.presentAlert(
+                            title: NSLocalizedString("REMOVE_FROM_LIBRARY_CONFIRM"),
+                            message: NSLocalizedString("REMOVE_FROM_LIBRARY_CONFIRM_TEXT"),
+                            actions: [
+                                UIAlertAction(title: NSLocalizedString("CANCEL"), style: .cancel),
+                                UIAlertAction(title: NSLocalizedString("REMOVE"), style: .destructive) { _ in
+                                    commit()
+                                }
+                            ]
                         )
+                    } else {
+                        commit()
                     }
                 })
             } else {
                 actions.append(UIAction(
                     title: NSLocalizedString("ADD_TO_LIBRARY"),
-                    image: UIImage(systemName: "books.vertical.fill")
+                    image: UIImage(systemName: "plus.circle")
                 ) { _ in
-                    // add bookmark icon
-                    self.bookmarkedItems.insert(entry.key)
-                    var snapshot = self.dataSource.snapshot()
-                    snapshot.reloadItems([entry])
-                    self.dataSource.apply(snapshot)
-                    // add to library
-                    Task {
-                        await MangaManager.shared.addToLibrary(
-                            sourceId: entry.sourceKey,
-                            manga: entry,
-                            fetchMangaDetails: true
-                        )
+                    if MangaManager.shouldAskForCategories() {
+                        // open category select view
+                        let viewController = UINavigationController(rootViewController: CategorySelectViewController(manga: entry))
+                        self.present(viewController, animated: true)
+                    } else {
+                        // add bookmark icon
+                        self.bookmarkedItems.insert(entry.key)
+                        var snapshot = self.dataSource.snapshot()
+                        snapshot.reloadItems([entry])
+                        self.dataSource.apply(snapshot)
+                        // add to library
+                        Task {
+                            await MangaManager.shared.addToLibrary(
+                                manga: entry,
+                                fetchMangaDetails: true
+                            )
+                        }
                     }
                 })
             }

@@ -16,7 +16,13 @@ class ReaderWebtoonViewController: ZoomableCollectionViewController {
     weak var delegate: ReaderHoldingDelegate?
 
     var chapter: AidokuRunner.Chapter?
-    var readingMode: ReadingMode = .webtoon
+    var readingMode: ReadingMode = .webtoon {
+        didSet {
+            let layout = collectionNode.collectionViewLayout as? VerticalContentOffsetPreservingLayout
+            layout?.spacing = readingMode == .webtoon ? 0 : 15
+            collectionNode.invalidateCalculatedLayout()
+        }
+    }
 
 //    private let prefetcher = ImagePrefetcher()
 
@@ -83,6 +89,7 @@ class ReaderWebtoonViewController: ZoomableCollectionViewController {
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 5
 
+        zoomView.doubleTapEnabled = !UserDefaults.standard.bool(forKey: "Reader.disableDoubleTap")
         zoomView.onZoomScaleChanged = { [weak self] scale in
             self?.setLiveTextButtonHidden(scale != 1)
         }
@@ -90,8 +97,10 @@ class ReaderWebtoonViewController: ZoomableCollectionViewController {
 
     override func observe() {
         addObserver(forName: "Reader.verticalInfiniteScroll") { [weak self] notification in
-            self?.infinite = notification.object as? Bool
-                ?? UserDefaults.standard.bool(forKey: "Reader.verticalInfiniteScroll")
+            self?.infinite = notification.object as? Bool ?? UserDefaults.standard.bool(forKey: "Reader.verticalInfiniteScroll")
+        }
+        addObserver(forName: "Reader.disableDoubleTap") { [weak self] notification in
+            self?.zoomView.doubleTapEnabled = !(notification.object as? Bool ?? UserDefaults.standard.bool(forKey: "Reader.disableDoubleTap"))
         }
         addObserver(forName: .readerShowingBars) { [weak self] _ in
             self?.setLiveTextButtonHidden(false)
@@ -199,7 +208,7 @@ extension ReaderWebtoonViewController {
         let page = getCurrentPage()
         if previousPage != page {
             previousPage = page
-            delegate?.setCurrentPage(page)
+            delegate?.setCurrentPage(page, position: nil)
         }
     }
 
@@ -249,14 +258,9 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
         }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil, actionProvider: { [weak self] _ in
             guard let self else { return nil }
-            let saveToPhotosAction = UIAction(
-                title: NSLocalizedString("SAVE_TO_PHOTOS", comment: ""),
-                image: UIImage(systemName: "photo")
-            ) { _ in
-                image.saveToAlbum(viewController: self)
-            }
+
             let shareAction = UIAction(
-                title: NSLocalizedString("SHARE", comment: ""),
+                title: NSLocalizedString("SHARE"),
                 image: UIImage(systemName: "square.and.arrow.up")
             ) { _ in
                 let items = [image]
@@ -268,8 +272,15 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
                 self.present(activityController, animated: true)
             }
 
+            let saveToPhotosAction = UIAction(
+                title: NSLocalizedString("SAVE_TO_PHOTOS"),
+                image: UIImage(systemName: "square.and.arrow.down")
+            ) { _ in
+                image.saveToAlbum(viewController: self)
+            }
+
             let reloadAction = UIAction(
-                title: NSLocalizedString("RELOAD", comment: ""),
+                title: NSLocalizedString("RELOAD"),
                 image: UIImage(systemName: "arrow.clockwise")
             ) { _ in
                 Task { @MainActor in
@@ -277,7 +288,7 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
                 }
             }
 
-            return UIMenu(title: "", children: [saveToPhotosAction, shareAction, reloadAction])
+            return UIMenu(title: "", children: [shareAction, saveToPhotosAction, reloadAction])
         })
     }
 
@@ -308,27 +319,35 @@ extension ReaderWebtoonViewController {
 
     // check for infinite load when deceleration stops
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        if decelerate {
+        if UserDefaults.standard.bool(forKey: "Reader.hideBarsOnSwipe") {
+            delegate?.hideBars()
+        }
+
+        guard !decelerate else {
             return
         }
         setLiveTextButtonHidden(false)
-        guard infinite else { return }
-        isScrolling = false
-        checkInfiniteLoad()
+
+        if infinite {
+            isScrolling = false
+            checkInfiniteLoad()
+        }
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         setLiveTextButtonHidden(false)
-        guard infinite else { return }
-        isScrolling = false
-        checkInfiniteLoad()
+        if infinite {
+            isScrolling = false
+            checkInfiniteLoad()
+        }
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
         setLiveTextButtonHidden(false)
-        guard infinite else { return }
-        isScrolling = false
-        checkInfiniteLoad()
+        if infinite {
+            isScrolling = false
+            checkInfiniteLoad()
+        }
     }
 
     // check if at the top or bottom to append the next/prev chapter

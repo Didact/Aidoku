@@ -40,20 +40,18 @@ class OldMangaCollectionViewController: BaseCollectionViewController {
     }
 
     override func observe() {
-        addObserver(forName: "General.portraitRows") { [weak self] _ in
-            Task { @MainActor in
-                self?.collectionView.collectionViewLayout.invalidateLayout()
-            }
-        }
-        addObserver(forName: "General.landscapeRows") { [weak self] _ in
-            Task { @MainActor in
-                self?.collectionView.collectionViewLayout.invalidateLayout()
+        let keys = ["Appearance.layout", "Appearance.customPortraitRows", "Appearance.customLandscapeRows"]
+        for key in keys {
+            addObserver(forName: key) { [weak self] _ in
+                Task { @MainActor in
+                    self?.collectionView.collectionViewLayout.invalidateLayout()
+                }
             }
         }
     }
 
     // MARK: Cell Registration
-    func configure(cell: MangaGridCell, info: MangaInfo) {
+    func configure(cell: MangaGridCell, info: MangaInfo, indexPath: IndexPath) {
         cell.sourceId = info.sourceId
         cell.mangaId = info.mangaId
         cell.title = info.title
@@ -63,11 +61,19 @@ class OldMangaCollectionViewController: BaseCollectionViewController {
         }
 
         cell.setSelected(cell.isSelected, animated: false)
+
+        if indexPath == focusedIndexPath {
+            cell.highlight()
+        }
     }
 
-    func configure(cell: MangaListCell, info: MangaInfo) {
+    func configure(cell: MangaListCell, info: MangaInfo, indexPath: IndexPath) {
         cell.configure(with: info)
         cell.setSelected(cell.isSelected, animated: false)
+
+        if indexPath == focusedIndexPath {
+            cell.highlight()
+        }
     }
 
     // MARK: Collection View Layout
@@ -119,11 +125,22 @@ extension OldMangaCollectionViewController {
     }
 
     static func makeGridLayoutSection(environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
-        let itemsPerRow = UserDefaults.standard.integer(
-            forKey: environment.container.contentSize.width > environment.container.contentSize.height
-                ? "General.landscapeRows"
-                : "General.portraitRows"
-        )
+        let layout = UserDefaults.standard.string(forKey: "Appearance.layout")
+        let containerWidth = environment.container.contentSize.width
+
+        let itemsPerRow: Int
+        switch layout {
+            case "standard":
+                let idealWidth: CGFloat = 180
+                itemsPerRow = max(1, Int(floor(containerWidth / idealWidth)))
+            case "compact":
+                let idealWidth: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 150 : 120
+                itemsPerRow = max(1, Int(floor(containerWidth / idealWidth)))
+            default: // custom
+                let isLandscape = containerWidth > environment.container.contentSize.height
+                let key = isLandscape ? "Appearance.customLandscapeRows" : "Appearance.customPortraitRows"
+                itemsPerRow = UserDefaults.standard.integer(forKey: key)
+        }
 
         let item = NSCollectionLayoutItem(layoutSize: NSCollectionLayoutSize(
             widthDimension: .fractionalWidth(1 / CGFloat(itemsPerRow)),
@@ -133,7 +150,7 @@ extension OldMangaCollectionViewController {
         let group = NSCollectionLayoutGroup.horizontal(
             layoutSize: NSCollectionLayoutSize(
                 widthDimension: .fractionalWidth(1),
-                heightDimension: .estimated(environment.container.contentSize.width * 3 / (2 * CGFloat(itemsPerRow)))
+                heightDimension: .estimated(containerWidth * 3 / (2 * CGFloat(itemsPerRow)))
             ),
             subitem: item,
             count: itemsPerRow
@@ -253,14 +270,14 @@ extension OldMangaCollectionViewController {
                     withReuseIdentifier: "MangaListCell",
                     for: indexPath
                 ) as! MangaListCell
-                self?.configure(cell: cell, info: item)
+                self?.configure(cell: cell, info: item, indexPath: indexPath)
                 return cell
             } else {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: "MangaGridCell",
                     for: indexPath
                 ) as! MangaGridCell
-                self?.configure(cell: cell, info: item)
+                self?.configure(cell: cell, info: item, indexPath: indexPath)
                 return cell
             }
             // swiftlint:enable force_cast
@@ -348,11 +365,15 @@ extension OldMangaCollectionViewController {
 
         var position = focusedIndexPath.row
         var section = focusedIndexPath.section
-        let itemsPerRow = UserDefaults.standard.integer(
-            forKey: UIScreen.main.bounds.width > UIScreen.main.bounds.height
-                ? "General.landscapeRows"
-                : "General.portraitRows"
-        )
+        let itemsPerRow = if usesListLayout {
+            1
+        } else {
+            UserDefaults.standard.integer(
+                forKey: UIScreen.main.bounds.width > UIScreen.main.bounds.height
+                    ? "Appearance.customLandscapeRows"
+                    : "Appearance.customPortraitRows"
+            )
+        }
         switch sender.input {
             case UIKeyCommand.inputLeftArrow: position -= 1
             case UIKeyCommand.inputRightArrow: position += 1

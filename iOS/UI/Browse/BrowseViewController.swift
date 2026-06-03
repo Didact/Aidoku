@@ -82,6 +82,7 @@ class BrowseViewController: BaseTableViewController {
         emptyStackView.buttonText = NSLocalizedString("ADDING_SOURCES_GUIDE_BUTTON", comment: "")
         emptyStackView.addButtonTarget(self, action: #selector(openGuidePage))
         emptyStackView.showsButton = true
+        emptyStackView.isHidden = true
         emptyStackView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(emptyStackView)
 
@@ -93,6 +94,11 @@ class BrowseViewController: BaseTableViewController {
             await viewModel.loadExternalSources()
             viewModel.loadUpdates()
             updateDataSource()
+
+            if viewModel.hasLegacySourceList && !UserDefaults.standard.bool(forKey: "Flag.showedLegacySourceListNotice") {
+                showLegacySourceListNotice()
+                UserDefaults.standard.set(true, forKey: "Flag.showedLegacySourceListNotice")
+            }
         }
     }
 
@@ -215,6 +221,16 @@ extension BrowseViewController {
         tabBarItem?.badgeValue = updateCount > 0 ? String(updateCount) : nil
     }
 
+    func showLegacySourceListNotice() {
+        let alert = UIAlertController(
+            title: NSLocalizedString("LEGACY_SOURCE_LIST_WARNING"),
+            message: NSLocalizedString("LEGACY_SOURCE_LIST_WARNING_INFO"),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK"), style: .cancel) { _ in })
+        present(alert, animated: true)
+    }
+
     @objc func refreshSourceLists(_ refreshControl: UIRefreshControl? = nil) {
         Task {
             await viewModel.loadExternalSources(reload: true)
@@ -232,16 +248,14 @@ extension BrowseViewController {
     }
 
     @objc func openMigrateSourcePage() {
-        let hostingController = UIHostingController(
-            rootView: SwiftUINavigationView(rootView: MigrateSourcesView())
-        )
+        let viewController = SwiftUINavigationViewController(rootView: MigrateSourcesView())
         if #available(iOS 26.0, *) {
-            hostingController.preferredTransition = .zoom { _ in
+            viewController.preferredTransition = .zoom { _ in
                 self.navigationItem.rightBarButtonItems?.last
             }
         }
-        hostingController.modalPresentationStyle = .pageSheet
-        present(hostingController, animated: true)
+        viewController.modalPresentationStyle = .pageSheet
+        present(viewController, animated: true)
     }
 
     @objc func openAddSourcePage() {
@@ -475,14 +489,12 @@ extension BrowseViewController {
             else {
                 return UITableViewCell()
             }
-            cell.setSourceInfo(info)
 
-            if info.externalInfo != nil {
-                if section == .external {
-                    cell.buttonTitle = NSLocalizedString("BUTTON_GET")
-                } else if section == .updates {
-                    cell.buttonTitle = NSLocalizedString("BUTTON_UPDATE")
-                }
+            cell.delegate = self
+            cell.setSourceInfo(info, showButton: section == .updates)
+
+            if section == .updates {
+                cell.buttonTitle = NSLocalizedString("BUTTON_UPDATE")
                 cell.selectionStyle = .none
                 cell.accessoryType = .none
             } else {
@@ -630,5 +642,32 @@ extension BrowseViewController {
                 self.navigationController?.isToolbarHidden = true
             }
         }
+    }
+}
+
+extension BrowseViewController: SourceCellDelegate {
+    func getButtonPressed(cell: SourceTableViewCell) {
+        guard
+            let externalInfo = cell.info?.externalInfo,
+            let url = externalInfo.fileURL
+        else {
+            cell.getButton.buttonState = .fail
+            return
+        }
+        cell.getButton.buttonState = .downloading
+        Task {
+            let installedSource = await SourceManager.shared.importSource(from: url)
+            cell.getButton.buttonState = installedSource == nil ? .fail : .get
+        }
+    }
+
+    func warningButtonPressed(cell: SourceTableViewCell) {
+        let alert = UIAlertController(
+            title: NSLocalizedString("MISSING_SOURCE_LIST"),
+            message: NSLocalizedString("MISSING_SOURCE_LIST_INFO"),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK"), style: .cancel) { _ in })
+        present(alert, animated: true)
     }
 }

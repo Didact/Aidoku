@@ -9,6 +9,14 @@ import AidokuRunner
 import UIKit
 
 enum Settings {
+    // All available font families on the system
+    private static let availableFonts: [String] = {
+        var fonts = UIFont.familyNames.sorted()
+        // Add "System" at the beginning for the default SF font
+        fonts.insert("System", at: 0)
+        return fonts
+    }()
+
     static let settings: [Setting] = [
         .init(value: .group(.init(items: [
             .init(
@@ -59,14 +67,14 @@ enum Settings {
                             .init(
                                 key: "General.icloudSync",
                                 title: String(format: NSLocalizedString("%@_EXPERIMENTAL"), NSLocalizedString("ICLOUD_SYNC")),
-                                requires: "isiCloudAvailable",
+                                requires: "Flag.isiCloudAvailable",
                                 value: .toggle(.init())
                             )
                         ])))
                     ],
                     icon: .system(name: "icloud.fill", color: "blue"),
                     info: NSLocalizedString(
-                        UserDefaults.standard.bool(forKey: "isSideloaded")
+                        UserDefaults.standard.bool(forKey: "Flag.isSideloaded")
                             ? "ICLOUD_SYNC_TEXT_SIDELOADED"
                             : "ICLOUD_SYNC_TEXT_EXPERIMENTAL"
                     )
@@ -150,17 +158,12 @@ extension Settings {
             )
         ]))),
         .init(
-            title: NSLocalizedString("MANGA_PER_ROW"),
+            title: NSLocalizedString("LAYOUT"),
             value: .group(.init(items: [
                 .init(
-                    key: "General.portraitRows",
-                    title: NSLocalizedString("PORTRAIT"),
-                    value: .stepper(.init(minimumValue: 1, maximumValue: 15))
-                ),
-                .init(
-                    key: "General.landscapeRows",
-                    title: NSLocalizedString("LANDSCAPE"),
-                    value: .stepper(.init(minimumValue: 1, maximumValue: 15))
+                    key: "Appearance.layout",
+                    title: NSLocalizedString("LAYOUT"),
+                    value: .custom
                 )
             ]))
         )
@@ -171,6 +174,11 @@ extension Settings {
             .init(
                 key: "Library.opensReaderView",
                 title: NSLocalizedString("OPEN_READER_VIEW"),
+                value: .toggle(.init())
+            ),
+            .init(
+                key: "Library.resumeLastOpenedChapter",
+                title: NSLocalizedString("RESUME_LAST_OPENED_CHAPTER"),
                 value: .toggle(.init())
             ),
             .init(
@@ -214,6 +222,11 @@ extension Settings {
                     value: .page(.init(items: []))
                 ),
                 .init(
+                    key: "Library.filterGroups",
+                    title: NSLocalizedString("FILTER_GROUPS"),
+                    value: .page(.init(items: []))
+                ),
+                .init(
                     key: "Library.defaultCategory",
                     title: NSLocalizedString("DEFAULT_CATEGORY"),
                     value: .custom
@@ -224,6 +237,12 @@ extension Settings {
                     notification: "updateLibraryLock",
                     requires: "Library.lockLibrary",
                     value: .custom
+                ),
+                .init(
+                    key: "Library.showUncategorizedCategory",
+                    title: NSLocalizedString("SHOW_UNCATEGORIZED_CATEGORY"),
+                    notification: "updateCategories",
+                    value: .toggle(.init())
                 )
             ]))
         ),
@@ -304,14 +323,23 @@ extension Settings {
                 key: "Reader.readingMode",
                 title: NSLocalizedString("READING_MODE"),
                 value: .select(.init(
-                    values: ["default", "auto", "rtl", "ltr", "vertical", "webtoon"],
+                    values: [
+                        "default",
+                        "auto",
+                        "rtl",
+                        "ltr",
+                        "vertical",
+                        "webtoon",
+                        "continuous"
+                    ],
                     titles: [
                         NSLocalizedString("DEFAULT"),
                         NSLocalizedString("AUTOMATIC"),
                         NSLocalizedString("RTL"),
                         NSLocalizedString("LTR"),
                         NSLocalizedString("VERTICAL"),
-                        NSLocalizedString("WEBTOON")
+                        NSLocalizedString("WEBTOON"),
+                        NSLocalizedString("CONTINUOUS_WITH_GAPS")
                     ]
                 ))
             ),
@@ -341,8 +369,18 @@ extension Settings {
                 value: .toggle(.init())
             ),
             .init(
+                key: "Reader.disableDoubleTap",
+                title: NSLocalizedString("DISABLE_DOUBLE_TAP_ZOOM"),
+                value: .toggle(.init())
+            ),
+            .init(
                 key: "Reader.liveText",
                 title: NSLocalizedString("LIVE_TEXT"),
+                value: .toggle(.init())
+            ),
+            .init(
+                key: "Reader.hideBarsOnSwipe",
+                title: NSLocalizedString("HIDE_BARS_ON_SWIPE"),
                 value: .toggle(.init())
             ),
             .init(
@@ -453,9 +491,9 @@ extension Settings {
                     ))
                 ),
                 .init(
-                    key: "Reader.pagedIsolateFirstPage",
-                    title: NSLocalizedString("ISOLATE_FIRST_PAGE"),
-                    notification: .init("Reader.pagedIsolateFirstPage"),
+                    key: "Reader.pagedPageOffset",
+                    title: NSLocalizedString("PAGE_OFFSET"),
+                    notification: .init("Reader.pagedPageOffset"),
                     value: .toggle(.init())
                 ),
                 .init(
@@ -506,6 +544,50 @@ extension Settings {
                                 NSLocalizedString("LANDSCAPE")
                             ]
                         ))
+                    )
+                ]
+            ))
+        ),
+        .init(
+            title: String(format: NSLocalizedString("%@_EXPERIMENTAL"), NSLocalizedString("TEXT_READER")),
+            value: .group(.init(
+                items: [
+                    .init(
+                        key: "Reader.textReaderStyle",
+                        title: NSLocalizedString("TEXT_READER_STYLE"),
+                        value: .select(.init(
+                            values: ["paged", "scroll"],
+                            titles: [
+                                NSLocalizedString("TEXT_READER_PAGED"),
+                                NSLocalizedString("TEXT_READER_SCROLL")
+                            ]
+                        ))
+                    ),
+                    .init(
+                        key: "Reader.textFontFamily",
+                        title: NSLocalizedString("TEXT_FONT_FAMILY"),
+                        notification: .init("Reader.textFontFamily"),
+                        value: .select(.init(
+                            values: Self.availableFonts
+                        ))
+                    ),
+                    .init(
+                        key: "Reader.textFontSize",
+                        title: NSLocalizedString("TEXT_FONT_SIZE"),
+                        notification: .init("Reader.textFontSize"),
+                        value: .stepper(.init(minimumValue: 12, maximumValue: 32, stepValue: 2))
+                    ),
+                    .init(
+                        key: "Reader.textLineSpacing",
+                        title: NSLocalizedString("TEXT_LINE_SPACING"),
+                        notification: .init("Reader.textLineSpacing"),
+                        value: .stepper(.init(minimumValue: 0, maximumValue: 24, stepValue: 2))
+                    ),
+                    .init(
+                        key: "Reader.textHorizontalPadding",
+                        title: NSLocalizedString("TEXT_HORIZONTAL_PADDING"),
+                        notification: .init("Reader.textHorizontalPadding"),
+                        value: .stepper(.init(minimumValue: 8, maximumValue: 48, stepValue: 4))
                     )
                 ]
             ))
