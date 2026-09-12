@@ -6,15 +6,15 @@
 //
 
 import AidokuRunner
-import Foundation
 import Testing
+import UIKit
 
 @testable import Aidoku
 
 actor TestableTracker: Tracker {
     let id = "test"
     let name = "Test"
-    let icon: Aidoku.PlatformImage? = nil
+    let icon: UIImage? = nil
     let isLoggedIn = true
 
     var lastReadChapter: Float?
@@ -68,6 +68,14 @@ actor TestableTracker: Tracker {
 @Suite struct TrackerSyncTests {
     static let testId = "test"
     static let testManga: AidokuRunner.Manga = .init(sourceKey: "test", key: "test", title: "Test")
+    static let testTrackItem = TrackItem(
+        id: Self.testId,
+        trackerId: "test",
+        mangaId: .init(sourceKey: "test", mangaKey: "test"),
+        title: nil,
+        state: nil,
+        chapterOffset: 0
+    )
 
     @Test func testChapterNumbers() async {
         let tracker = TestableTracker()
@@ -75,7 +83,7 @@ actor TestableTracker: Tracker {
 
         let result = await TrackerManager.shared.getChaptersToSyncProgressFromTracker(
             tracker: tracker,
-            trackId: Self.testId,
+            trackItem: Self.testTrackItem,
             manga: Self.testManga,
             chapters: (1...10).map {
                 .init(
@@ -107,7 +115,7 @@ actor TestableTracker: Tracker {
 
         var result = await TrackerManager.shared.getChaptersToSyncProgressFromTracker(
             tracker: tracker,
-            trackId: Self.testId,
+            trackItem: Self.testTrackItem,
             manga: Self.testManga,
             chapters: chapters,
             currentHighestRead: 0
@@ -120,7 +128,7 @@ actor TestableTracker: Tracker {
 
         result = await TrackerManager.shared.getChaptersToSyncProgressFromTracker(
             tracker: tracker,
-            trackId: Self.testId,
+            trackItem: Self.testTrackItem,
             manga: Self.testManga,
             chapters: chapters,
             currentHighestRead: 0
@@ -144,7 +152,7 @@ actor TestableTracker: Tracker {
 
         var result = await TrackerManager.shared.getChaptersToSyncProgressFromTracker(
             tracker: tracker,
-            trackId: Self.testId,
+            trackItem: Self.testTrackItem,
             manga: Self.testManga,
             chapters: chapters,
             currentHighestRead: 5
@@ -155,7 +163,7 @@ actor TestableTracker: Tracker {
 
         result = await TrackerManager.shared.getChaptersToSyncProgressFromTracker(
             tracker: tracker,
-            trackId: Self.testId,
+            trackItem: Self.testTrackItem,
             manga: Self.testManga,
             chapters: chapters,
             currentHighestRead: 4
